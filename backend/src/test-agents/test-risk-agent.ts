@@ -1,6 +1,6 @@
-import { YieldNeuron } from "./agents/yield";
-import { RiskNeuron } from "./agents/risk";
-import { type SystemContext } from "./agents/base";
+import { YieldNeuron } from "../agents/yield";
+import { RiskNeuron } from "../agents/risk";
+import { type SystemContext } from "../agents/base";
 
 async function testAgents() {
   console.log("🧠 Testing YieldNeuron vs RiskNeuron\n");

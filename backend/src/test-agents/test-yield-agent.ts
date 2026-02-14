@@ -1,5 +1,5 @@
-import { YieldNeuron } from "./agents/yield";
-import { type SystemContext } from "./agents/base";
+import { YieldNeuron } from "../agents/yield";
+import { type SystemContext } from "../agents/base";
 
 async function testYieldAgent() {
   console.log("🧠 Testing YieldNeuron Agent...\n");
@@ -49,4 +49,4 @@ async function testYieldAgent() {
   console.log(`   Reasoning: ${proposal.reasoning}`);
 }
 
-testYieldAgent().catch(console.error)
+testYieldAgent().catch(console.error);
