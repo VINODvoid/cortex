@@ -69,7 +69,19 @@ export class RiskNeuron extends Agent {
     return cleaned.trim();
   }
   override async vote(proposal: Proposal): Promise<"YES" | "NO" | "ABSTAIN"> {
-    // Todo Implement smart voting 
+    // Todo Implement smart voting
+    // Vote NO on changes (rebalancing = risk!)
+    if (
+      proposal.action === "rebalance" ||
+      proposal.action === "provide_liquidity"
+    ) {
+      return "NO"; // Change is risky, stay put!
+    }
+
+    // Vote YES on safe actions (holding or exiting risk)
+    if (proposal.action === "hold" || proposal.action === "exit") {
+      return "YES"; // Safety first!
+    }
     return "ABSTAIN";
   }
 }

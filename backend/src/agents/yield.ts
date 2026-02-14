@@ -68,7 +68,14 @@ export class YieldNeuron extends Agent {
     return cleaned.trim();
   }
   async vote(proposal: Proposal): Promise<"YES" | "NO" | "ABSTAIN"> {
-    // TODO: Implement smart voting- vote YES if Proposal increases yield
+    // TODO: Implement smart voting - vote YES if Proposal increases yield
+    if (proposal.action === "rebalance" || proposal.action === "provide_liquidity") {
+      return "YES"
+    }
+    if (proposal.action === "exit") {
+      return "NO"
+    }
+
     return "ABSTAIN";
   }
 }

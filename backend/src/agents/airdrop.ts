@@ -78,6 +78,18 @@ export class AirdropNeuron extends Agent {
   }
   override async vote(proposal: Proposal): Promise<"YES" | "NO" | "ABSTAIN"> {
     // Todo : Implement yes if proposal helps airdrop farming
+    // Vote YES on actions that help farming
+    if (
+      proposal.action === "provide_liquidity" ||
+      proposal.action === "rebalance"
+    ) {
+      return "YES"; // More positions = more airdrops!
+    }
+
+    // Vote NO on exiting (lose airdrop eligibility!)
+    if (proposal.action === "exit") {
+      return "NO"; // Stay in for the airdrop!
+    }
     return "ABSTAIN";
   }
 }
