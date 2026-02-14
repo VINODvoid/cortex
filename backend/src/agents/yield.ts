@@ -40,9 +40,9 @@ export class YieldNeuron extends Agent {
       };
     } catch (e) {
       if (e instanceof Error) {
-        console.log("Yield Agent: " + e.message);
+        console.log("YieldNeuron: " + e.message);
       } else {
-        console.log("YieldAgent Error: Something Went Wrong");
+        console.log("YieldNeuron Error: Something Went Wrong");
       }
       return {
         agent: "yield",
