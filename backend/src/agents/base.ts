@@ -27,10 +27,10 @@ export interface SystemContext {
     usdc: number;
     [key: string]: number;
   };
-  pools: Array<{
+  pools?: Array<{
     name: string;
-    apy: string;
-    tvl: string;
+    apy: number;
+    tvl: number;
   }>;
 }
 
@@ -45,7 +45,7 @@ export abstract class Agent {
   }
   abstract think(context: SystemContext): Promise<Proposal>;
 
-  abstract vote(propsal: Proposal): Promise<"YES" | "NO" | "ABSTAIN">;
+  abstract vote(proposal: Proposal): Promise<"YES" | "NO" | "ABSTAIN">;
 
   protected async askGroq(prompt: string): Promise<string> {
     const response = await this.groq.chat.completions.create({
