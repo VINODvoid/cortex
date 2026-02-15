@@ -1,8 +1,8 @@
-import { AirdropNeuron } from "../agents/airdrop";
+import { LiquidityNeuron } from "../agents/liquidity";
 import { type SystemContext } from "../agents/base";
 
-async function testAirdropAgent() {
-  console.log("🧠 Testing AirdropNeuron Agent...\n");
+async function testLiquidityAgent() {
+  console.log("🧠 Testing LiquidityNeuron Agent...\n");
 
   const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey) {
@@ -10,7 +10,7 @@ async function testAirdropAgent() {
     process.exit(1);
   }
 
-  const agent = new AirdropNeuron(apiKey);
+  const agent = new LiquidityNeuron(apiKey);
 
   const context: SystemContext = {
     portfolio: {
@@ -38,11 +38,11 @@ async function testAirdropAgent() {
 
   const proposal = await agent.think(context);
 
-  console.log("💡 AirdropNeuron Proposal:");
+  console.log("💡 LiquidityNeuron Proposal:");
   console.log(`   Action: ${proposal.action}`);
   console.log(`   Target: ${proposal.target || "N/A"}`);
   console.log(`   Confidence: ${proposal.confidence}%`);
   console.log(`   Reasoning: ${proposal.reasoning}\n`);
 }
 
-testAirdropAgent().catch(console.error);
+testLiquidityAgent().catch(console.error);
