@@ -9,6 +9,8 @@ import { SentimentNeuron } from "../agents/sentiment";
 import { RebalancerNeuron } from "../agents/rebalancer";
 import { WhaleNeuron } from "../agents/whale";
 import { GasOptimizerNeuron } from "../agents/gas";
+import { SolanaService } from "../blockchain/solana";
+import { PoolDataService } from "../blockchain/pools";
 
 async function testOrchestrator() {
   console.log("🧠 CORTEX - 10-Agent Autonomous Swarm\n");
@@ -47,9 +49,33 @@ async function testOrchestrator() {
   console.log("   ⛽ GasOptimizer - Transaction cost optimizer");
 
   console.log("\n" + "=".repeat(60));
+  console.log("🔗 Connecting to Solana devnet...\n");
+
+  // Initialize blockchain services
+  const solanaService = new SolanaService("devnet");
+  const poolDataService = new PoolDataService(solanaService.getConnection());
+
+  console.log(`📍 Wallet: ${solanaService.getWalletAddress()}`);
+
+  // Request airdrop if balance is low (handle failure gracefully)
+  const balance = await solanaService.getBalance(
+    solanaService.getWallet().publicKey,
+  );
+  if (balance < 1) {
+    console.log("💰 Attempting airdrop...");
+    try {
+      await solanaService.requestAirdrop();
+      console.log("✅ Airdrop received!");
+    } catch (error) {
+      console.log("⚠️  Airdrop failed (devnet may be rate limited)");
+      console.log("   Proceeding with demo anyway (pool data is mocked)...");
+    }
+  }
+
+  console.log("\n" + "=".repeat(60));
   console.log("Starting 10-agent coordination cycle...\n");
 
-  const cortex = new Cortex(agents);
+  const cortex = new Cortex(agents, solanaService, poolDataService);
   await cortex.runCycle();
 
   console.log("\n" + "=".repeat(60));

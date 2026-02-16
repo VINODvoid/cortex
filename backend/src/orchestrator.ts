@@ -1,4 +1,6 @@
 import type { Agent, Proposal } from "./agents/base";
+import type { SolanaService } from "./blockchain/solana";
+import type { PoolDataService } from "./blockchain/pools";
 
 interface VoteResult {
   yes: number;
@@ -8,7 +10,11 @@ interface VoteResult {
 }
 
 export class Cortex {
-  constructor(private agents: Agent[]) {}
+  constructor(
+    private agents: Agent[],
+    private solanaService: SolanaService,
+    private poolDataService: PoolDataService,
+  ) {}
   async runCycle() {
     // Starting the cycle
     console.log("Starting agent cycle...\n");
@@ -43,17 +49,23 @@ export class Cortex {
     }
   }
   private async collectProposals(): Promise<Proposal[]> {
+    // Fetch real blockchain data
+    const walletAddress = this.solanaService.getWallet().publicKey;
+    const solBalance = await this.solanaService.getBalance(walletAddress);
+    const pools = await this.poolDataService.getAllPools();
+
+    // Build context with real data
     const context = {
       portfolio: {
-        sol: 100,
-        usdc: 0,
+        sol: solBalance,
+        usdc: 0, // TODO: Fetch USDC balance from SPL token account
       },
-      pools: [
-        { name: "Orca", apy: 5.2, tvl: 50000000 },
-        { name: "Marinade", apy: 6.1, tvl: 80000000 },
-        { name: "Kamino", apy: 5.8, tvl: 30000000 },
-      ],
+      pools,
     };
+
+    console.log(`\n💼 Portfolio: ${solBalance.toFixed(2)} SOL`);
+    console.log(`📊 Fetched ${pools.length} DeFi pools\n`);
+
     const proposals = await Promise.all(
       this.agents.map((agent) => agent.think(context)),
     );
