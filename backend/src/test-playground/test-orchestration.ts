@@ -11,6 +11,7 @@ import { WhaleNeuron } from "../agents/whale";
 import { GasOptimizerNeuron } from "../agents/gas";
 import { SolanaService } from "../blockchain/solana";
 import { PoolDataService } from "../blockchain/pools";
+import { JupiterService } from "../blockchain/jupiter";
 
 async function testOrchestrator() {
   console.log("🧠 CORTEX - 10-Agent Autonomous Swarm\n");
@@ -54,6 +55,7 @@ async function testOrchestrator() {
   // Initialize blockchain services
   const solanaService = new SolanaService("devnet");
   const poolDataService = new PoolDataService(solanaService.getConnection());
+  const jupiterService = new JupiterService(solanaService.getConnection());
 
   console.log(`📍 Wallet: ${solanaService.getWalletAddress()}`);
 
@@ -75,7 +77,12 @@ async function testOrchestrator() {
   console.log("\n" + "=".repeat(60));
   console.log("Starting 10-agent coordination cycle...\n");
 
-  const cortex = new Cortex(agents, solanaService, poolDataService);
+  const cortex = new Cortex(
+    agents,
+    solanaService,
+    poolDataService,
+    jupiterService,
+  );
   await cortex.runCycle();
 
   console.log("\n" + "=".repeat(60));
