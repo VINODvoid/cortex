@@ -21,17 +21,17 @@ import { Cpu, Zap, Target, Shield, Activity, Radio } from "lucide-react-native";
 const { width } = Dimensions.get("window");
 
 const THEME = {
-  bgStart: "#080808",
+  bgStart: "#06061A",
   bgEnd: "#000000",
   text: "#FFFFFF",
   subtext: "#888888",
 };
 
 const SLIDES = [
-  { id: "1", tag: "01 / INTELLIGENCE", title: "CORTEX", desc: "Autonomous agents analyzing market fractals.", type: "neural" },
-  { id: "2", tag: "02 / COORDINATION", title: "SWARM", desc: "Liquidity scouts executing in perfect unison.", type: "swarm" },
-  { id: "3", tag: "03 / VELOCITY", title: "VELOCITY", desc: "Sub-second finality. Zero latency execution.", type: "velocity" },
-  { id: "4", tag: "04 / EXECUTION", title: "DEPLOY", desc: "System ready. Initiate protocol sequence.", type: "deploy" },
+  { id: "1", tag: "01 / INTELLIGENCE", title: "CORTEX", desc: "Autonomous agents analyzing market fractals.", type: "neural",    accent: "#6E8EFF", accent2: "#B06EFF" },
+  { id: "2", tag: "02 / COORDINATION", title: "SWARM", desc: "Liquidity scouts executing in perfect unison.", type: "swarm",     accent: "#36E8B8", accent2: "#36B8E8" },
+  { id: "3", tag: "03 / VELOCITY", title: "VELOCITY", desc: "Sub-second finality. Zero latency execution.", type: "velocity",   accent: "#FFB236", accent2: "#FF6B36" },
+  { id: "4", tag: "04 / EXECUTION", title: "DEPLOY", desc: "System ready. Initiate protocol sequence.", type: "deploy",         accent: "#FF4EFF", accent2: "#FF4E9E" },
 ];
 
 // ─── MODULE-LEVEL CONSTANTS ──────────────────────────────────────────────────
@@ -591,6 +591,30 @@ export default function Onboarding() {
       <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
       <LinearGradient colors={[THEME.bgStart, THEME.bgEnd]} style={StyleSheet.absoluteFill} />
 
+      {/* Per-slide full-screen gradient overlays — cross-fade on swipe */}
+      {SLIDES.map((slide, index) => {
+        const inputRange = [(index - 1) * width, index * width, (index + 1) * width];
+        const op = scrollX.interpolate({ inputRange, outputRange: [0, 1, 0], extrapolate: "clamp" });
+        return (
+          <Animated.View key={slide.id} style={[StyleSheet.absoluteFill, { opacity: op }]}>
+            {/* Ultra-subtle top bleed — felt not seen */}
+            <LinearGradient
+              colors={[`${slide.accent}16`, `${slide.accent}06`, "transparent"]}
+              start={{ x: 0.5, y: 0 }}
+              end={{ x: 0.5, y: 0.55 }}
+              style={StyleSheet.absoluteFill}
+            />
+          </Animated.View>
+        );
+      })}
+
+      {/* Bottom fade so footer always reads cleanly */}
+      <LinearGradient
+        colors={["transparent", "rgba(0,0,0,0.85)"]}
+        style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 180 }}
+        pointerEvents="none"
+      />
+
       <SafeAreaView style={styles.safeArea}>
         <Animated.View style={[styles.header, { opacity: skipOpacity }]}>
           <Pressable onPress={() => router.replace("/(tabs)/home")} hitSlop={20} style={styles.skipBtn}>
@@ -621,13 +645,18 @@ export default function Onboarding() {
           return (
             <View style={styles.slide}>
               <View style={styles.visualSection}>
+                {/* Per-slide radial glow — subtle bloom around animation */}
+                <LinearGradient
+                  colors={[`${item.accent}20`, `${item.accent2}0A`, "transparent"]}
+                  style={{ position: "absolute", width: 340, height: 340, borderRadius: 170 }}
+                />
                 {item.type === "neural" && <NeuralVisual />}
                 {item.type === "swarm" && <SwarmVisual />}
                 {item.type === "velocity" && <VelocityVisual />}
                 {item.type === "deploy" && <DeployVisual />}
               </View>
               <Animated.View style={[styles.textSection, { opacity, transform: [{ translateX }] }]}>
-                <Text style={styles.tag}>{item.tag}</Text>
+                <Text style={[styles.tag, { color: item.accent }]}>{item.tag}</Text>
                 <Text style={styles.title}>{item.title}</Text>
                 <Text style={styles.desc}>{item.desc}</Text>
               </Animated.View>
@@ -640,36 +669,36 @@ export default function Onboarding() {
       <View style={styles.footer}>
         {/* Pagination dots */}
         <View style={styles.pagination}>
-          {SLIDES.map((_, i) => {
+          {SLIDES.map((slide, i) => {
             const ir = [(i - 1) * width, i * width, (i + 1) * width];
             const dotWidth = scrollX.interpolate({ inputRange: ir, outputRange: [5, 28, 5], extrapolate: "clamp" });
             const dotOpacity = scrollX.interpolate({ inputRange: ir, outputRange: [0.3, 1, 0.3], extrapolate: "clamp" });
-            const glowOp = scrollX.interpolate({ inputRange: ir, outputRange: [0, 0.6, 0], extrapolate: "clamp" });
+            const glowOp = scrollX.interpolate({ inputRange: ir, outputRange: [0, 0.7, 0], extrapolate: "clamp" });
 
             return (
               <View key={i} style={{ alignItems: "center", justifyContent: "center" }}>
-                {/* Glow halo */}
+                {/* Glow halo — tinted to slide accent */}
                 <Animated.View
                   style={{
                     position: "absolute",
                     height: 12,
                     borderRadius: 6,
-                    backgroundColor: "rgba(255,255,255,0.2)",
+                    backgroundColor: slide.accent + "30",
                     width: dotWidth,
                     opacity: glowOp,
                   }}
                 />
-                {/* Dot */}
+                {/* Active dot — accent tinted */}
                 <Animated.View
                   style={{
                     height: 4,
                     borderRadius: 2,
-                    backgroundColor: "#FFF",
+                    backgroundColor: slide.accent,
                     width: dotWidth,
                     opacity: dotOpacity,
-                    shadowColor: "#FFF",
-                    shadowOpacity: 0.8,
-                    shadowRadius: 4,
+                    shadowColor: slide.accent,
+                    shadowOpacity: 0.9,
+                    shadowRadius: 6,
                   }}
                 />
               </View>
@@ -685,6 +714,17 @@ export default function Onboarding() {
         {/* Morphing CTA button */}
         <Pressable onPress={handleNext}>
           <Animated.View style={[styles.button, { width: btnWidth, borderRadius: btnRadius }]}>
+            {/* Pearl gradient — white top catches light, cool pearl bottom adds depth */}
+            <LinearGradient
+              colors={["#FFFFFF", "#D6D6F0"]}
+              start={{ x: 0.5, y: 0 }}
+              end={{ x: 0.5, y: 1 }}
+              style={StyleSheet.absoluteFill}
+            />
+            {/* Top highlight edge — physical surface catch */}
+            <View style={styles.btnHighlight} />
+            {/* Bottom shadow edge — physical surface fall-off */}
+            <View style={styles.btnShadowEdge} />
             <Animated.View style={[styles.layer, { opacity: iconOpacity }]}>
               <View style={styles.arrow} />
             </Animated.View>
@@ -707,13 +747,13 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "flex-end",
     paddingHorizontal: 24,
-    paddingTop: Platform.OS === "android" ? 40 : 10,
+    paddingTop: Platform.OS === "android" ? 20 : 10,
   },
   skipBtn: { padding: 10 },
   skipText: { color: "#555", fontSize: 11, fontWeight: "700", letterSpacing: 1.5 },
   slide: { width, flex: 1 },
   visualSection: { flex: 0.55, justifyContent: "center", alignItems: "center" },
-  visualContainer: { width: 300, height: 300, justifyContent: "center", alignItems: "center" },
+  visualContainer: { width: 300, height: 300, justifyContent: "center", alignItems: "center", transform: [{ scale: 0.95 }] },
   textSection: { flex: 0.45, paddingHorizontal: 32, justifyContent: "flex-start", paddingTop: 10 },
   tag: { color: THEME.subtext, fontSize: 11, fontWeight: "700", letterSpacing: 2.5, marginBottom: 14 },
   title: {
@@ -730,17 +770,33 @@ const styles = StyleSheet.create({
   counter: { color: "rgba(255,255,255,0.18)", fontSize: 10, fontWeight: "600", letterSpacing: 2 },
   button: {
     height: 72,
-    backgroundColor: "#FFF",
     justifyContent: "center",
     alignItems: "center",
     overflow: "hidden",
-    shadowColor: "#FFF",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 20,
-    elevation: 5,
+    shadowColor: "#A0A0FF",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.25,
+    shadowRadius: 24,
+    elevation: 8,
+  },
+  btnHighlight: {
+    position: "absolute",
+    top: 0,
+    left: 20,
+    right: 20,
+    height: 1,
+    backgroundColor: "rgba(255,255,255,0.95)",
+    borderRadius: 1,
+  },
+  btnShadowEdge: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 2,
+    backgroundColor: "rgba(0,0,0,0.08)",
   },
   layer: { ...StyleSheet.absoluteFillObject, justifyContent: "center", alignItems: "center" },
-  btnText: { color: "#000", fontSize: 13, fontWeight: "800", letterSpacing: 1.5 },
-  arrow: { width: 14, height: 14, borderTopWidth: 2, borderRightWidth: 2, borderColor: "#000", transform: [{ rotate: "45deg" }] },
+  btnText: { color: "#0A0A1A", fontSize: 13, fontWeight: "800", letterSpacing: 1.5 },
+  arrow: { width: 14, height: 14, borderTopWidth: 2, borderRightWidth: 2, borderColor: "#0A0A1A", transform: [{ rotate: "45deg" }] },
 });
