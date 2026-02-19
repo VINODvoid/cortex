@@ -1,18 +1,8 @@
-import { FontAwesome5 } from "@expo/vector-icons";
-import { Tabs } from "expo-router";
+import { Tabs } from 'expo-router';
+import TabLayout from './Tabs';
 
-export default function TabLayout(){
+export default function AppLayout() {
   return (
-    <Tabs screenOptions={{
-      headerShown:false
-    }}>
-      <Tabs.Screen name="home"
-      options={{
-          title: "Home",
-          tabBarIcon: ({ color, size }) => (
-            <FontAwesome5 name="home" size={size} color={color} />
-          ),
-        }}/>
-    </Tabs>
-  )
+    <TabLayout />
+  );
 }
