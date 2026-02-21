@@ -5,94 +5,67 @@ export class StrategistNeuron extends Agent {
     super("strategist", apiKey);
   }
 
-  async think(context: SystemContext): Promise<Proposal> {
+  override async think(context: SystemContext): Promise<Proposal> {
+    this.setContext(context);
     try {
       const prompt = `You are StrategistNeuron, the strategic portfolio coordinator.
-        Your role: Analyze overall portfolio health and recommend strategic direction.
+Your role: Analyze overall portfolio health and recommend strategic direction.
 
-        Current Portfolio:
-        SOL: ${context.portfolio.sol}
-        USDC: ${context.portfolio.usdc}
+Current Portfolio:
+SOL: ${context.portfolio.sol}
+USDC: ${context.portfolio.usdc}
 
-        Available Pools:
-        ${context.pools
-          ?.map(
-            (p) => `
-        - ${p.name}: ${p.apy}% APY, TVL: $${p.tvl.toLocaleString()}
-        `,
-          )
-          .join("\n")}
+Available Pools:
+${context.pools?.map((p) => `- ${p.name}: ${p.apy.toFixed(2)}% APY, TVL: $${p.tvl.toLocaleString()}`).join("\n") ?? "None"}
 
-        Strategic Considerations:
-        - Portfolio diversification: Is portfolio too concentrated?
-        - Risk/reward balance: Are we too aggressive or too conservative?
-        - Long-term positioning: What's the best strategy for growth?
-        - Synergy: Do available opportunities align with goals?
+Strategic Considerations:
+- Diversification: too concentrated in one asset?
+- Risk/reward: too aggressive or too conservative?
+- Idle capital: SOL not earning yield is a missed opportunity
 
-        Current state: 100% in SOL (not earning yield)
+Actions:
+- "optimize": Rebalance for best risk-adjusted returns
+- "diversify": Spread across multiple protocols
+- "consolidate": Simplify positions
+- "hold": Current strategy is already optimal
 
-        What strategic action should we take?
-        - "optimize": Rebalance for best overall portfolio health
-        - "diversify": Spread across multiple protocols
-        - "consolidate": Simplify positions
-        - "hold": Current strategy is optimal
-
-        Respond as JSON:
-        {
-          "action": "optimize" | "diversify" | "consolidate" | "hold",
-          "target": "recommended pool or null",
-          "reasoning": "explain the strategic thinking",
-          "confidence": 0-100
-        }`;
+Respond ONLY with JSON — no preamble, no markdown:
+{
+  "action": "optimize" or "diversify" or "consolidate" or "hold",
+  "target": "recommended pool or null",
+  "reasoning": "strategic thinking",
+  "confidence": 0-100
+}`;
       const aiResponse = await this.askGroq(prompt);
-      const parsedAIResponse = this.extractJSON(aiResponse);
-      const response = JSON.parse(parsedAIResponse);
-      return {
-        agent: "strategist",
-        action: response.action,
-        reasoning: response.reasoning,
-
-        confidence: response.confidence,
-        target: response.target,
-      };
+      const parsed = this.parseResponse(aiResponse);
+      return { agent: "strategist", ...parsed };
     } catch (e) {
-      if (e instanceof Error) {
-        console.log("StrategicNeuron: " + e.message);
-      } else {
-        console.log("StrategicNeuron Error: Something Went Wrong");
-      }
-      return {
-        agent: "strategist",
-        action: "hold",
-        reasoning: "Error parsing AI response, holding position for safety",
-        confidence: 0,
-        target: undefined,
-      };
+      console.error("StrategistNeuron think error:", e instanceof Error ? e.message : e);
+      return { agent: "strategist", action: "hold", reasoning: "Parse error — holding for safety", confidence: 0 };
     }
   }
 
-  // Helper to extract JSON from AI response (removes markdown formatting)
-  private extractJSON(response: string): string {
-    // Remove markdown code blocks if present
-    let cleaned = response.trim();
+  override async vote(proposal: Proposal): Promise<"YES" | "NO" | "ABSTAIN"> {
+    // Strategist supports goal-aligned proposals with sufficient confidence
+    const CONFIDENCE_THRESHOLD = 60;
 
-    // Remove ```json and ``` markers
-    if (cleaned.startsWith("```")) {
-      cleaned = cleaned.replace(/^```(?:json)?\n?/i, "");
-      cleaned = cleaned.replace(/\n?```$/, "");
-    }
-
-    return cleaned.trim();
-  }
-  async vote(proposal: Proposal): Promise<"YES" | "NO" | "ABSTAIN"> {
-    // TODO: Implement smart voting - vote YES if Proposal increases yield
     if (
       proposal.action === "optimize" ||
-      proposal.action === "provide_liquidity" || proposal.action === "rebalance"
+      proposal.action === "diversify" ||
+      proposal.action === "rebalance" ||
+      proposal.action === "provide_liquidity"
     ) {
-      return "YES";
+      return proposal.confidence >= CONFIDENCE_THRESHOLD ? "YES" : "ABSTAIN";
     }
-    
+
+    if (proposal.action === "consolidate" || proposal.action === "hold") {
+      return "ABSTAIN"; // Neutral on conservative actions
+    }
+
+    if (proposal.action === "exit") {
+      // Support exits only if they're high-confidence and well-reasoned
+      return proposal.confidence >= 75 ? "YES" : "NO";
+    }
 
     return "ABSTAIN";
   }

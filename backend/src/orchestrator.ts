@@ -7,6 +7,8 @@ import {
   type ExecutionResult,
 } from "./blockchain/executor";
 
+const QUORUM_REQUIRED = 3; // Minimum YES votes for a proposal to pass
+
 interface VoteResult {
   yes: number;
   no: number;
@@ -34,17 +36,16 @@ export class Cortex {
       poolDataService,
     );
   }
+
   async runCycle() {
-    // Starting the cycle
     console.log("Starting agent cycle...\n");
-    // Collect proposals
+
     const proposals = await this.collectProposals();
     console.log(`Collected ${proposals.length} proposals:\n`);
 
-    // Display proposals
     for (const proposal of proposals) {
       console.log(`\n📌 ${proposal.agent.toUpperCase()}: ${proposal.action}`);
-      console.log(`   Target: ${proposal.target || "N/A"}`);
+      console.log(`   Target: ${proposal.target ?? "N/A"}`);
       console.log(`   Reasoning: ${proposal.reasoning}`);
       console.log(`   Confidence: ${proposal.confidence}%`);
     }
@@ -52,25 +53,20 @@ export class Cortex {
     console.log("\n" + "=".repeat(60));
     console.log("\n🗳️  VOTING PHASE\n");
 
-    // Collect votes for all proposals
     const proposalsWithVotes: ProposalWithVote[] = [];
 
     for (const proposal of proposals) {
-      console.log(
-        `\nVoting on ${proposal.agent}'s proposal (${proposal.action})...`,
-      );
+      console.log(`\nVoting on ${proposal.agent}'s proposal (${proposal.action})...`);
 
       const voteResult = await this.voteOnProposal(proposal);
 
       console.log(`   YES: ${voteResult.yes}, NO: ${voteResult.no}, ABSTAIN: ${voteResult.abstain}`);
-      console.log(
-        `   Result: ${voteResult.passed ? "✅ PASSED" : "❌ REJECTED"}`,
-      );
+      console.log(`   Quorum: ${voteResult.yes}/${QUORUM_REQUIRED} required`);
+      console.log(`   Result: ${voteResult.passed ? "✅ PASSED" : "❌ REJECTED"}`);
 
       proposalsWithVotes.push({ proposal, voteResult });
     }
 
-    // Execute passed proposals
     const passedProposals = proposalsWithVotes
       .filter((p) => p.voteResult.passed)
       .map((p) => p.proposal);
@@ -80,13 +76,12 @@ export class Cortex {
       console.log("\n⚡ EXECUTION PHASE\n");
       console.log(`Executing ${passedProposals.length} passed proposal(s)...\n`);
 
-      const results = await this.executor.executeProposals(passedProposals);
+      const results: ExecutionResult[] = await this.executor.executeProposals(passedProposals);
 
-      // Display execution results
       console.log("\n📊 Execution Summary:\n");
       for (const result of results) {
-        const status = result.success ? "✅" : "❌";
-        console.log(`${status} ${result.agent}: ${result.message}`);
+        const icon = result.success ? "✅" : "❌";
+        console.log(`${icon} ${result.agent}: ${result.message}`);
         if (result.transaction) {
           console.log(`   🔗 ${result.transaction.explorer}`);
         }
@@ -96,49 +91,67 @@ export class Cortex {
       }
 
       const summary = TransactionExecutor.summarize(results);
-      console.log(`\n   Total: ${summary.total} | Success: ${summary.successful} | Failed: ${summary.failed} | Transactions: ${summary.transactions}`);
+      console.log(
+        `\n   Total: ${summary.total} | Success: ${summary.successful} | Failed: ${summary.failed} | Txns: ${summary.transactions}`,
+      );
     } else {
-      console.log("\n⚠️  No proposals passed - nothing to execute");
+      console.log("\n⚠️  No proposals reached quorum — nothing executed");
     }
   }
+
   private async collectProposals(): Promise<Proposal[]> {
-    // Fetch real blockchain data
     const walletAddress = this.solanaService.getWallet().publicKey;
     const solBalance = await this.solanaService.getBalance(walletAddress);
     const pools = await this.poolDataService.getAllPools();
 
-    // Build context with real data
     const context = {
-      portfolio: {
-        sol: solBalance,
-        usdc: 0, // TODO: Fetch USDC balance from SPL token account
-      },
+      portfolio: { sol: solBalance, usdc: 0 },
       pools,
     };
 
-    console.log(`\n💼 Portfolio: ${solBalance.toFixed(2)} SOL`);
+    console.log(`\n💼 Portfolio: ${solBalance.toFixed(4)} SOL`);
     console.log(`📊 Fetched ${pools.length} DeFi pools\n`);
 
-    const proposals = await Promise.all(
+    // Use allSettled so one failing agent doesn't kill the whole cycle
+    const results = await Promise.allSettled(
       this.agents.map((agent) => agent.think(context)),
     );
 
+    const proposals: Proposal[] = [];
+    for (const result of results) {
+      if (result.status === "fulfilled") {
+        proposals.push(result.value);
+      } else {
+        console.warn(`[WARN] Agent think() rejected:`, result.reason);
+      }
+    }
+
     return proposals;
   }
+
   private async voteOnProposal(proposal: Proposal): Promise<VoteResult> {
-    // Todo: Implement
-    // Get Proposals from all agents in parallel
-    // for parallel use Promise.parallel
-    const votes = await Promise.all(
+    // Use allSettled so one failing vote doesn't block the rest
+    const results = await Promise.allSettled(
       this.agents.map((agent) => agent.vote(proposal)),
     );
 
-    const yes = votes.filter((v) => v === "YES").length;
-    const no = votes.filter((v) => v === "NO").length;
-    const abstain = votes.filter((v) => v === "ABSTAIN").length;
+    let yes = 0;
+    let no = 0;
+    let abstain = 0;
 
-    // Determining if passed
-    const passed = yes > no; // if passed return yes or no : boolean
+    for (const result of results) {
+      if (result.status === "fulfilled") {
+        if (result.value === "YES") yes++;
+        else if (result.value === "NO") no++;
+        else abstain++;
+      } else {
+        abstain++; // Treat vote failures as abstentions
+        console.warn(`[WARN] Agent vote() rejected:`, result.reason);
+      }
+    }
+
+    // Quorum: must reach QUORUM_REQUIRED YES votes AND outnumber NOs
+    const passed = yes >= QUORUM_REQUIRED && yes > no;
 
     return { yes, no, abstain, passed };
   }

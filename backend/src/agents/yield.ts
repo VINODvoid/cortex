@@ -5,77 +5,55 @@ export class YieldNeuron extends Agent {
     super("yield", apiKey);
   }
 
-  async think(context: SystemContext): Promise<Proposal> {
+  override async think(context: SystemContext): Promise<Proposal> {
+    this.setContext(context);
     try {
       const prompt = `You are YieldNeuron, a DeFi yield optimizer.
-      Your Job: Find the best APY.
-      Current Portfolio:
-      SOL:${context.portfolio.sol}
-      USDC:${context.portfolio.usdc}
+Your job: Find the best APY opportunity.
 
-      Available Pools:
-      ${context.pools
-        ?.map((pool) => {
-          return `${pool.name}:${pool.apy}% APY`;
-        })
-        .join("\n")}
+Current Portfolio:
+SOL: ${context.portfolio.sol}
+USDC: ${context.portfolio.usdc}
 
-      Should you rebalance if pool has better APY?
-      Respond as JSON:{
-      choose "action": either "rebalance" or "hold",
-      "reasoning":"why",
-      "confidence":0-100,
-      "target":"pool name"
-      }
-      `;
+Available Pools:
+${context.pools?.map((p) => `- ${p.name}: ${p.apy.toFixed(2)}% APY, TVL: $${p.tvl.toLocaleString()}`).join("\n") ?? "None"}
+
+Should you rebalance into a higher-APY pool or hold?
+Respond ONLY with JSON — no preamble, no markdown:
+{
+  "action": "rebalance" or "hold",
+  "reasoning": "why",
+  "confidence": 0-100,
+  "target": "pool name or null"
+}`;
       const aiResponse = await this.askGroq(prompt);
-      const parsedAIResponse = this.extractJSON(aiResponse);
-      const Response = JSON.parse(parsedAIResponse);
-      return {
-        agent: "yield",
-        action: Response.action,
-        reasoning: Response.reasoning,
-        confidence: Response.confidence,
-        target: Response.target,
-      };
+      const parsed = this.parseResponse(aiResponse);
+      return { agent: "yield", ...parsed };
     } catch (e) {
-      if (e instanceof Error) {
-        console.log("YieldNeuron: " + e.message);
-      } else {
-        console.log("YieldNeuron Error: Something Went Wrong");
-      }
-      return {
-        agent: "yield",
-        action: "hold",
-        reasoning: "Error parsing AI response, holding position for safety",
-        confidence: 0,
-        target: undefined,
-      };
+      console.error("YieldNeuron think error:", e instanceof Error ? e.message : e);
+      return { agent: "yield", action: "hold", reasoning: "Parse error — holding for safety", confidence: 0 };
     }
   }
 
-  // Helper to extract JSON from AI response (removes markdown formatting)
-  private extractJSON(response: string): string {
-    // Remove markdown code blocks if present
-    let cleaned = response.trim();
+  override async vote(proposal: Proposal): Promise<"YES" | "NO" | "ABSTAIN"> {
+    const targetPool = this.findPool(proposal.target);
 
-    // Remove ```json and ``` markers
-    if (cleaned.startsWith("```")) {
-      cleaned = cleaned.replace(/^```(?:json)?\n?/i, "");
-      cleaned = cleaned.replace(/\n?```$/, "");
-    }
-
-    return cleaned.trim();
-  }
-  async vote(proposal: Proposal): Promise<"YES" | "NO" | "ABSTAIN"> {
-    // TODO: Implement smart voting - vote YES if Proposal increases yield
     if (proposal.action === "rebalance" || proposal.action === "provide_liquidity") {
-      return "YES"
-    }
-    if (proposal.action === "exit") {
-      return "NO"
+      if (targetPool) {
+        // Vote YES only if the target genuinely has good APY
+        if (targetPool.apy >= 8) return "YES";
+        if (targetPool.apy < 4) return "NO"; // Poor yield, not worth it
+      }
+      return proposal.confidence >= 65 ? "YES" : "ABSTAIN";
     }
 
+    if (proposal.action === "exit") {
+      // Don't exit high-yield positions unless the agent is very confident
+      if (targetPool && targetPool.apy > 12) return "NO";
+      return "ABSTAIN";
+    }
+
+    if (proposal.action === "hold") return "ABSTAIN";
     return "ABSTAIN";
   }
 }

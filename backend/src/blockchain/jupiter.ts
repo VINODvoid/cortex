@@ -77,7 +77,7 @@ export class JupiterService {
       throw new Error(`Jupiter quote failed: ${error}`);
     }
 
-    return await response.json();
+    return (await response.json()) as SwapQuote;
   }
 
   /**
@@ -112,7 +112,13 @@ export class JupiterService {
       throw new Error(`Jupiter swap request failed: ${error}`);
     }
 
-    const { swapTransaction } = await swapResponse.json();
+    const { swapTransaction } = (await swapResponse.json()) as {
+      swapTransaction: string;
+    };
+
+    // Fetch blockhash for confirmation strategy (non-deprecated form)
+    const { blockhash, lastValidBlockHeight } =
+      await this.connection.getLatestBlockhash("confirmed");
 
     // Deserialize the transaction
     const swapTransactionBuf = Buffer.from(swapTransaction, "base64");
@@ -123,16 +129,16 @@ export class JupiterService {
 
     // Send the transaction
     const rawTransaction = transaction.serialize();
-    const signature = await this.connection.sendRawTransaction(
-      rawTransaction,
-      {
-        skipPreflight: true,
-        maxRetries: 2,
-      },
-    );
+    const signature = await this.connection.sendRawTransaction(rawTransaction, {
+      skipPreflight: true,
+      maxRetries: 2,
+    });
 
-    // Wait for confirmation
-    await this.connection.confirmTransaction(signature, "confirmed");
+    // Wait for confirmation using BlockheightBasedTransactionConfirmationStrategy
+    await this.connection.confirmTransaction(
+      { signature, blockhash, lastValidBlockHeight },
+      "confirmed",
+    );
 
     // Parse amounts for result
     const inputAmount = Number(quote.inAmount);

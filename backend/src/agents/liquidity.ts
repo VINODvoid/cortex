@@ -1,102 +1,63 @@
 import { Agent, type Proposal, type SystemContext } from "./base";
 
+const DEEP_LIQUIDITY = 50_000_000;  // TVL > $50M = safe
+const THIN_LIQUIDITY = 5_000_000;   // TVL < $5M = extreme risk
+
 export class LiquidityNeuron extends Agent {
   constructor(apiKey: string) {
     super("liquidity", apiKey);
   }
+
   override async think(context: SystemContext): Promise<Proposal> {
+    this.setContext(context);
     try {
       const prompt = `You are LiquidityNeuron, a liquidity depth monitor.
-       Your role: Analyze liquidity opportunities and recommend optimal provision strategies.
+Your role: Assess liquidity safety before any capital deployment.
 
-       Current Portfolio:
-       SOL: ${context.portfolio.sol}
-       USDC: ${context.portfolio.usdc}
+Current Portfolio:
+SOL: ${context.portfolio.sol}
+USDC: ${context.portfolio.usdc}
 
-       Available Pools:
-       ${context.pools
-         ?.map(
-           (p) => `
-       - ${p.name}: ${p.apy}% APY, TVL: $${p.tvl.toLocaleString()}
-       `,
-         )
-         .join("\n")}
+Available Pools:
+${context.pools?.map((p) => `- ${p.name}: ${p.apy.toFixed(2)}% APY, TVL: $${p.tvl.toLocaleString()}`).join("\n") ?? "None"}
 
-       Liquidity Strategy:
-       Liquidity Risk Assessment:
-         - TVL < $5M = EXTREME RISK (illiquid, high slippage)
-         - TVL $5M-$10M = CAUTION (moderate risk)
-         - TVL > $50M = SAFE (deep liquidity)
-       - Balanced portfolios benefit from providing liquidity to established pools
-       - Consider trading fees + APY as total returns
-       - Look for: stable TVL, reasonable APY, good trading volume
-       - Avoid: Extremely low TVL pools, pools with sudden TVL drops
+Liquidity Risk Levels:
+- TVL < $5M  = EXTREME RISK (illiquid, high slippage)
+- TVL $5M-$20M = CAUTION
+- TVL > $50M = SAFE (deep liquidity)
 
-       Analyze the pools for liquidity depth.
-      If ANY pool has TVL < $5M, recommend "avoid_pool" with that pool name.
+If ANY pool has TVL < $5M, flag it as dangerous.
 
-       Respond as JSON:
-       {
-         "action": "avoid_pool" or "safe",
-         "target": "pool name or null",
-         "reasoning": "explain the liquidity opportunity and TVL analysis",
-         "confidence": 0-100
-       }`;
+Respond ONLY with JSON — no preamble, no markdown:
+{
+  "action": "avoid_pool" or "safe",
+  "target": "dangerous pool name or null",
+  "reasoning": "TVL analysis",
+  "confidence": 0-100
+}`;
       const aiResponse = await this.askGroq(prompt);
-      const parsedAIResponse = this.extractJSON(aiResponse);
-      const response = JSON.parse(parsedAIResponse);
-
-      return {
-        agent: "liquidity",
-        action: response.action,
-        reasoning: response.reasoning,
-        confidence: response.confidence,
-        target: response.target,
-      };
+      const parsed = this.parseResponse(aiResponse);
+      return { agent: "liquidity", ...parsed };
     } catch (e) {
-      if (e instanceof Error) {
-        console.log("LiquidityNeuron: " + e.message);
-      } else {
-        console.log("LiquidityNeuron Error: Something Went Wrong");
-      }
-      return {
-        agent: "liquidity",
-        action: "hold",
-        reasoning: "Error parsing AI response, holding position for safety",
-        confidence: 0,
-        target: undefined,
-      };
+      console.error("LiquidityNeuron think error:", e instanceof Error ? e.message : e);
+      return { agent: "liquidity", action: "safe", reasoning: "Parse error — assuming safe", confidence: 0 };
     }
   }
 
   override async vote(proposal: Proposal): Promise<"YES" | "NO" | "ABSTAIN"> {
-    // Vote YES on actions that improve liquidity provision
-    if (
-      proposal.action === "provide_liquidity" ||
-      proposal.action === "rebalance"
-    ) {
-      return "NO"; // Could be targeting risky positions
+    const targetPool = this.findPool(proposal.target);
+
+    if (proposal.action === "provide_liquidity" || proposal.action === "rebalance") {
+      if (targetPool) {
+        if (targetPool.tvl >= DEEP_LIQUIDITY) return "YES";  // Deep liquidity
+        if (targetPool.tvl < THIN_LIQUIDITY) return "NO";    // Too illiquid
+        return "ABSTAIN"; // Moderate — let others decide
+      }
+      return "ABSTAIN";
     }
 
-    // Vote NO on exiting positions (reduces liquidity)
-    if (proposal.action === "exit" || proposal.action === "hold") {
-      return "YES"; // Safe actions
-    }
-
+    if (proposal.action === "avoid_pool") return "YES"; // Always support flagging danger
+    if (proposal.action === "exit") return "YES";       // Exiting reduces liquidity risk exposure
     return "ABSTAIN";
-  }
-
-  // Helper to extract JSON from AI response (removes markdown formatting)
-  private extractJSON(response: string): string {
-    // Remove markdown code blocks if present
-    let cleaned = response.trim();
-
-    // Remove ```json and ``` markers
-    if (cleaned.startsWith("```")) {
-      cleaned = cleaned.replace(/^```(?:json)?\n?/i, "");
-      cleaned = cleaned.replace(/\n?```$/, "");
-    }
-
-    return cleaned.trim();
   }
 }

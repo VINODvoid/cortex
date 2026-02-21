@@ -1,95 +1,70 @@
-
 import { Agent, type Proposal, type SystemContext } from "./base";
 
 export class TrendNeuron extends Agent {
   constructor(apiKey: string) {
     super("trend", apiKey);
   }
+
   override async think(context: SystemContext): Promise<Proposal> {
+    this.setContext(context);
     try {
-      const prompt = `You are TrendNeuron, a market trend detector
-       Your role: Identify bullish or bearish market momentum.
+      const avgApy =
+        context.pools && context.pools.length > 0
+          ? context.pools.reduce((s, p) => s + p.apy, 0) / context.pools.length
+          : 0;
 
-       Current Portfolio:
-       SOL: ${context.portfolio.sol}
-       USDC: ${context.portfolio.usdc}
+      const prompt = `You are TrendNeuron, a market trend detector.
+Your role: Identify bullish or bearish market momentum.
 
-       Available Pools:
-       ${context.pools
-         ?.map(
-           (p) => `
-       - ${p.name}: ${p.apy}% APY, TVL: $${p.tvl.toLocaleString()}
-       `,
-         )
-         .join("\n")}
-       Trend Indicators:
-       - High APYs (>8%) = bullish market interest
-       - Growing TVLs = capital flowing in (bullish)
-       - Low APYs (<3%) = bearish/stagnant
-       - Declining TVLs = capital fleeing (bearish)
+Current Portfolio:
+SOL: ${context.portfolio.sol}
+USDC: ${context.portfolio.usdc}
 
-       Respond as JSON:
-       {
-         "action": "buy_trend" or "sell_trend" or "sideways",
-         "target": "pool name or null",
-         "reasoning": "explain the market trend",
-         "confidence": 0-100
-       }`;
+Available Pools (average APY: ${avgApy.toFixed(2)}%):
+${context.pools?.map((p) => `- ${p.name}: ${p.apy.toFixed(2)}% APY, TVL: $${p.tvl.toLocaleString()}`).join("\n") ?? "None"}
+
+Trend Indicators:
+- Average APY > 8% = bullish market interest
+- Growing high TVLs = capital flowing in (bullish)
+- Average APY < 3% = bearish/stagnant
+- Low TVLs across pools = capital leaving (bearish)
+
+Respond ONLY with JSON — no preamble, no markdown:
+{
+  "action": "buy_trend" or "sell_trend" or "sideways",
+  "target": "highest-TVL pool name or null",
+  "reasoning": "market trend analysis",
+  "confidence": 0-100
+}`;
       const aiResponse = await this.askGroq(prompt);
-      const parsedAIResponse = this.extractJSON(aiResponse);
-      const response = JSON.parse(parsedAIResponse);
-
-      return {
-        agent: "trend",
-        action: response.action,
-        reasoning: response.reasoning,
-        confidence: response.confidence,
-        target: response.target,
-      };
+      const parsed = this.parseResponse(aiResponse);
+      return { agent: "trend", ...parsed };
     } catch (e) {
-      if (e instanceof Error) {
-        console.log("TrendNeuron: " + e.message);
-      } else {
-        console.log("TrendNeuron Error: Something Went Wrong");
-      }
-      return {
-        agent: "trend",
-        action: "hold",
-        reasoning: "Error parsing AI response, holding position for safety",
-        confidence: 0,
-        target: undefined,
-      };
+      console.error("TrendNeuron think error:", e instanceof Error ? e.message : e);
+      return { agent: "trend", action: "sideways", reasoning: "Parse error — neutral stance", confidence: 0 };
     }
   }
 
   override async vote(proposal: Proposal): Promise<"YES" | "NO" | "ABSTAIN"> {
-    // Vote YES on following market momentum
-    if (
-      proposal.action === "provide_liquidity" ||
-      proposal.action === "rebalance"
-    ) {
-      return "YES"; 
+    const pools = this.lastContext?.pools ?? [];
+    const avgApy = pools.length
+      ? pools.reduce((s, p) => s + p.apy, 0) / pools.length
+      : 0;
+    const bullish = avgApy >= 8;
+
+    if (proposal.action === "rebalance" || proposal.action === "provide_liquidity") {
+      // Follow trend: support momentum plays only in a bullish environment
+      return bullish ? "YES" : "NO";
     }
 
-    // Vote NO on existing during trends
-    if (proposal.action === "exit" ) {
-      return "NO"; 
+    if (proposal.action === "exit" || proposal.action === "sell_trend") {
+      return bullish ? "NO" : "YES"; // Don't exit during bull, do exit in bear
+    }
+
+    if (proposal.action === "buy_trend") {
+      return bullish ? "YES" : "NO";
     }
 
     return "ABSTAIN";
-  }
-
-  // Helper to extract JSON from AI response (removes markdown formatting)
-  private extractJSON(response: string): string {
-    // Remove markdown code blocks if present
-    let cleaned = response.trim();
-
-    // Remove ```json and ``` markers
-    if (cleaned.startsWith("```")) {
-      cleaned = cleaned.replace(/^```(?:json)?\n?/i, "");
-      cleaned = cleaned.replace(/\n?```$/, "");
-    }
-
-    return cleaned.trim();
   }
 }

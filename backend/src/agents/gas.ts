@@ -1,5 +1,6 @@
-
 import { Agent, type Proposal, type SystemContext } from "./base";
+
+const MIN_SOL_FOR_EFFICIENT_SWAP = 0.5; // < 0.5 SOL → gas eats gains
 
 export class GasOptimizerNeuron extends Agent {
   constructor(apiKey: string) {
@@ -7,99 +8,61 @@ export class GasOptimizerNeuron extends Agent {
   }
 
   override async think(context: SystemContext): Promise<Proposal> {
+    this.setContext(context);
     try {
-     
-      const prompt = `You are GasOptimizer, the transaction cost
-        optimizer.
-        Your role: Minimize transaction fees and maximize capital
-        efficiency.
-      
-        Current Portfolio:
-        SOL: ${context.portfolio.sol}
-        USDC: ${context.portfolio.usdc}
-      
-        Available Pools:
-        ${context.pools?.map(p => `
-        - ${p.name}: ${p.apy}% APY, TVL: $${p.tvl.toLocaleString()}
-        `).join("\n")}
-      
-        Gas Optimization Strategy:
-        - Small transactions = High gas cost relative to value
-        (inefficient)
-        - Batch operations when possible to reduce total gas
-        - Avoid frequent rebalancing (gas costs add up)
-        - Higher APY must justify gas costs
-      
-        Gas Cost Analysis:
-        - Is the expected profit worth the gas cost?
-        - For small positions (<$100), gas can eat most gains
-        - Recommend batching multiple operations together
-      
-        Gas Actions:
-        - "optimize_gas": Reduce transaction frequency, batch operations
-        - "gas_efficient": Current strategy minimizes gas costs
-        - "high_gas_risk": Too many small transactions, costs too high
-      
-        Analyze if current strategy is gas-efficient.
-      
-        Respond as JSON:
-        {
-          "action": "optimize_gas" or "gas_efficient" or "high_gas_risk",
-          "target": "pool name or null",
-          "reasoning": "explain the gas cost analysis",
-          "confidence": 0-100
-        }`;
-      const aiResponse = await this.askGroq(prompt);
-      const parsedAIResponse = this.extractJSON(aiResponse);
-      const response = JSON.parse(parsedAIResponse);
+      const prompt = `You are GasOptimizer, the transaction cost minimizer.
+Your role: Ensure expected yield exceeds transaction costs before approving any action.
 
-      return {
-        agent: "gas",
-        action: response.action,
-        reasoning: response.reasoning,
-        confidence: response.confidence,
-        target: response.target,
-      };
+Current Portfolio:
+SOL: ${context.portfolio.sol}
+USDC: ${context.portfolio.usdc}
+
+Available Pools:
+${context.pools?.map((p) => `- ${p.name}: ${p.apy.toFixed(2)}% APY, TVL: $${p.tvl.toLocaleString()}`).join("\n") ?? "None"}
+
+Gas Cost Analysis (Solana):
+- Each swap ≈ 0.000005 SOL in priority fees
+- For small positions (< 0.5 SOL), gas is > 1% of position value — inefficient
+- High APY (> 10%) can justify gas costs; low APY (< 5%) cannot
+- Batching multiple operations reduces per-operation cost
+
+Respond ONLY with JSON — no preamble, no markdown:
+{
+  "action": "optimize_gas" or "gas_efficient" or "high_gas_risk",
+  "target": "pool name or null",
+  "reasoning": "gas cost analysis",
+  "confidence": 0-100
+}`;
+      const aiResponse = await this.askGroq(prompt);
+      const parsed = this.parseResponse(aiResponse);
+      return { agent: "gas", ...parsed };
     } catch (e) {
-      if (e instanceof Error) {
-        console.log("GasOptimizerNeuron: " + e.message);
-      } else {
-        console.log("GasOptimizerNeuron Error: Something Went Wrong");
-      }
-      return {
-        agent: "gas",
-        action: "gas_efficient",
-        reasoning: "Error parsing AI response, holding position for safety",
-        confidence: 0,
-        target: undefined,
-      };
+      console.error("GasOptimizerNeuron think error:", e instanceof Error ? e.message : e);
+      return { agent: "gas", action: "gas_efficient", reasoning: "Parse error — assuming efficient", confidence: 0 };
     }
   }
 
   override async vote(proposal: Proposal): Promise<"YES" | "NO" | "ABSTAIN"> {
-    
-    // Vote NO on frequent small rebalances (gas inefficient)
-    if (
-      proposal.action === "rebalance" ||
-      proposal.action === "provide_liquidity"
-    ) {
-      return "NO"; // Prevent gas-expensive operations
-    }
-  
-    // Vote YES on hold (saves gas)
-    if (proposal.action === "hold") {
-      return "YES"; // No transactions = no gas costs
-    }
-  
-    return "ABSTAIN";
-  }
+    const sol = this.lastContext?.portfolio.sol ?? 0;
+    const targetPool = this.findPool(proposal.target);
 
-  private extractJSON(response: string): string {
-    let cleaned = response.trim();
-    if (cleaned.startsWith("```")) {
-      cleaned = cleaned.replace(/^```(?:json)?\n?/i, "");
-      cleaned = cleaned.replace(/\n?```$/, "");
+    if (proposal.action === "rebalance" || proposal.action === "provide_liquidity") {
+      // Block gas-expensive operations when portfolio is too small
+      if (sol < MIN_SOL_FOR_EFFICIENT_SWAP) return "NO";
+      // Block if the target APY is too low to justify fees
+      if (targetPool && targetPool.apy < 5) return "NO";
+      // Support only high-confidence, high-APY proposals
+      return proposal.confidence >= 70 ? "YES" : "ABSTAIN";
     }
-    return cleaned.trim();
+
+    if (proposal.action === "hold" || proposal.action === "gas_efficient") {
+      return "YES"; // No-transaction actions are always gas-optimal
+    }
+
+    if (proposal.action === "high_gas_risk") {
+      return "NO"; // Flag the concern
+    }
+
+    return "ABSTAIN";
   }
 }

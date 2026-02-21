@@ -6,98 +6,63 @@ export class RebalancerNeuron extends Agent {
   }
 
   override async think(context: SystemContext): Promise<Proposal> {
+    this.setContext(context);
     try {
-      const prompt = `You are RebalancerNeuron, the portfolio
-      rebalancing specialist.
-      Your role: Maintain optimal asset allocation and diversification.
+      const sol = context.portfolio.sol;
+      const usdc = context.portfolio.usdc;
+      const totalValue = sol * 170 + usdc; // rough USD estimate
+      const solConcentration = totalValue > 0 ? (sol * 170) / totalValue : 1;
 
-      Current Portfolio:
-      SOL: ${context.portfolio.sol}
-      USDC: ${context.portfolio.usdc}
+      const prompt = `You are RebalancerNeuron, the portfolio rebalancing specialist.
+Your role: Maintain optimal asset allocation and diversification.
 
-      Available Pools:
-      ${context.pools
-        ?.map(
-          (p) => `
-      - ${p.name}: ${p.apy}% APY, TVL: $${p.tvl.toLocaleString()}
-      `,
-        )
-        .join("\n")}
+Current Portfolio:
+SOL: ${sol} (~$${(sol * 170).toFixed(0)})
+USDC: ${usdc}
+SOL Concentration: ${(solConcentration * 100).toFixed(1)}% of portfolio
 
-      Rebalancing Strategy:
-      - Portfolio too concentrated? Diversify across multiple pools
-      - Portfolio too spread out? Consolidate to reduce complexity
-      - Idle capital (SOL/USDC)? Deploy to productive assets
-      - One position > 50% of portfolio? Reduce concentration risk
+Available Pools:
+${context.pools?.map((p) => `- ${p.name}: ${p.apy.toFixed(2)}% APY, TVL: $${p.tvl.toLocaleString()}`).join("\n") ?? "None"}
 
-      Rebalancing Actions:
-      - "rebalance_needed": Portfolio is unbalanced, needs adjustment
-      - "well_balanced": Portfolio allocation is optimal
-      - "consolidate": Too many small positions, simplify
+Rebalancing Rules:
+- If SOL concentration > 70% → portfolio is over-concentrated, recommend rebalancing
+- If USDC = 0 → all idle capital, deploy to earn yield
+- Target: diversify across 2-3 protocols with proven TVL
 
-      Analyze the current allocation.
-      Check if portfolio is too concentrated (>70% in one asset) or has
-      idle capital.
-
-      Respond as JSON:
-      {
-        "action": "rebalance_needed" or "well_balanced" or
-      "consolidate",
-        "target": "suggested pool or null",
-        "reasoning": "explain the rebalancing analysis",
-        "confidence": 0-100
-      }`;
+Respond ONLY with JSON — no preamble, no markdown:
+{
+  "action": "rebalance_needed" or "well_balanced" or "consolidate",
+  "target": "best pool to deploy into or null",
+  "reasoning": "rebalancing analysis",
+  "confidence": 0-100
+}`;
       const aiResponse = await this.askGroq(prompt);
-      const parsedAIResponse = this.extractJSON(aiResponse);
-      const response = JSON.parse(parsedAIResponse);
-
-      return {
-        agent: "rebalance",
-        action: response.action,
-        reasoning: response.reasoning,
-        confidence: response.confidence,
-        target: response.target,
-      };
+      const parsed = this.parseResponse(aiResponse);
+      return { agent: "rebalance", ...parsed };
     } catch (e) {
-      if (e instanceof Error) {
-        console.log("RebalanceNeuron: " + e.message);
-      } else {
-        console.log("RebalanceNeuron Error: Something Went Wrong");
-      }
-      return {
-        agent: "rebalance",
-        action: "well_balanced",
-        reasoning: "Error parsing AI response, holding position for safety",
-        confidence: 0,
-        target: undefined,
-      };
+      console.error("RebalancerNeuron think error:", e instanceof Error ? e.message : e);
+      return { agent: "rebalance", action: "well_balanced", reasoning: "Parse error — assuming balanced", confidence: 0 };
     }
   }
 
   override async vote(proposal: Proposal): Promise<"YES" | "NO" | "ABSTAIN"> {
-    // Vote YES on rebalancing and diversification
-    if (
-      proposal.action === "rebalance" ||
-      proposal.action === "provide_liquidity" ||
-      proposal.action === "diversify"
-    ) {
-      return "YES"; // Support portfolio optimization
+    const sol = this.lastContext?.portfolio.sol ?? 0;
+    const usdc = this.lastContext?.portfolio.usdc ?? 0;
+    const totalValue = sol * 170 + usdc;
+    const solConcentration = totalValue > 0 ? (sol * 170) / totalValue : 1;
+
+    if (proposal.action === "rebalance" || proposal.action === "rebalance_needed" || proposal.action === "provide_liquidity") {
+      // Support rebalancing when portfolio is actually concentrated
+      return solConcentration > 0.7 ? "YES" : "ABSTAIN";
     }
 
-    // Vote NO on exits that would unbalance portfolio
+    if (proposal.action === "diversify") return "YES";
+
     if (proposal.action === "exit") {
-      return "NO"; // Maintain balanced positions
+      // Oppose exits that would make the portfolio even less balanced
+      return solConcentration > 0.9 ? "ABSTAIN" : "NO";
     }
 
     return "ABSTAIN";
-  }
-
-  private extractJSON(response: string): string {
-    let cleaned = response.trim();
-    if (cleaned.startsWith("```")) {
-      cleaned = cleaned.replace(/^```(?:json)?\n?/i, "");
-      cleaned = cleaned.replace(/\n?```$/, "");
-    }
-    return cleaned.trim();
   }
 }

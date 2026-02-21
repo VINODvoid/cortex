@@ -1,0 +1,243 @@
+import type { ServerWebSocket } from "bun";
+import { SolanaService } from "../blockchain/solana";
+import { PoolDataService } from "../blockchain/pools";
+import { StrategistNeuron } from "../agents/strategist";
+import { YieldNeuron } from "../agents/yield";
+import { RiskNeuron } from "../agents/risk";
+import { LiquidityNeuron } from "../agents/liquidity";
+import { TrendNeuron } from "../agents/trend";
+import { SentimentNeuron } from "../agents/sentiment";
+import { WhaleNeuron } from "../agents/whale";
+import { RebalancerNeuron } from "../agents/rebalancer";
+import { GasOptimizerNeuron } from "../agents/gas";
+import { AirdropNeuron } from "../agents/airdrop";
+import type { Agent } from "../agents/base";
+import { createInitialState, addActivity, broadcast } from "./state";
+import type { AppState } from "./state";
+import type { ActivityItem } from "./types";
+
+const SOL_PRICE_USD = 170;
+
+const CORS_HEADERS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type",
+};
+
+function jsonResponse(data: unknown, status = 200): Response {
+  return Response.json(data, { status, headers: CORS_HEADERS });
+}
+
+export function createServer(port = 3001) {
+  const solanaService = new SolanaService("devnet");
+  const poolDataService = new PoolDataService(solanaService.getConnection());
+  const groqKey = process.env.GROQ_API_KEY ?? "";
+
+  const agents: Agent[] = [
+    new StrategistNeuron(groqKey),
+    new YieldNeuron(groqKey),
+    new RiskNeuron(groqKey),
+    new LiquidityNeuron(groqKey),
+    new TrendNeuron(groqKey),
+    new SentimentNeuron(groqKey),
+    new WhaleNeuron(groqKey),
+    new RebalancerNeuron(groqKey),
+    new GasOptimizerNeuron(groqKey),
+    new AirdropNeuron(groqKey),
+  ];
+
+  const state: AppState = createInitialState(solanaService.getWalletAddress());
+
+  async function refreshPortfolio(): Promise<void> {
+    try {
+      const wallet = solanaService.getWallet();
+      const sol = await solanaService.getBalance(wallet.publicKey);
+      const prevTotal = state.portfolio.totalUsd;
+      const totalUsd = sol * SOL_PRICE_USD;
+      const change24h =
+        prevTotal > 0 ? ((totalUsd - prevTotal) / prevTotal) * 100 : 0;
+      state.portfolio = { ...state.portfolio, sol, totalUsd, change24h };
+      broadcast(state, { event: "portfolio_update", data: state.portfolio });
+    } catch {
+      // devnet balance fetch failures are non-fatal
+    }
+  }
+
+  async function runCycle(): Promise<void> {
+    if (state.cycleRunning) return;
+
+    state.cycleRunning = true;
+    broadcast(state, { event: "cycle_start", data: {} });
+
+    // Mark all agents as THINKING
+    state.agents = state.agents.map((a) => ({ ...a, status: "THINKING" as const }));
+
+    await refreshPortfolio();
+
+    const pools = await poolDataService.getAllPools();
+    const context = {
+      portfolio: { sol: state.portfolio.sol, usdc: state.portfolio.usdc },
+      pools,
+    };
+
+    // Collect proposals (concurrent, individual failures skipped)
+    const proposalResults = await Promise.allSettled(
+      agents.map(async (agent, i) => {
+        const proposal = await agent.think(context);
+
+        const item: ActivityItem = {
+          id: `${Date.now()}-p${i}`,
+          type: "PROPOSAL",
+          agent: state.agents[i]?.name ?? proposal.agent,
+          action: proposal.action,
+          target: proposal.target,
+          status: "PENDING",
+          timestamp: new Date().toISOString(),
+        };
+
+        addActivity(state, item);
+
+        state.agents = state.agents.map((a, j) =>
+          j === i
+            ? { ...a, status: "ACTIVE" as const, lastAction: proposal.action, confidence: proposal.confidence }
+            : a,
+        );
+
+        broadcast(state, { event: "proposal", data: item });
+        return { proposal, agentIdx: i };
+      }),
+    );
+
+    const proposals = proposalResults
+      .filter((r): r is PromiseFulfilledResult<{ proposal: any; agentIdx: number }> => r.status === "fulfilled")
+      .map((r) => r.value);
+
+    // Vote phase
+    let successful = 0;
+    let failed = 0;
+
+    for (const { proposal, agentIdx } of proposals) {
+      const voteResults = await Promise.allSettled(agents.map((a) => a.vote(proposal)));
+      const votes = voteResults
+        .filter((r): r is PromiseFulfilledResult<"YES" | "NO" | "ABSTAIN"> => r.status === "fulfilled")
+        .map((r) => r.value);
+
+      const yes = votes.filter((v) => v === "YES").length;
+      const no = votes.filter((v) => v === "NO").length;
+      const abstain = votes.filter((v) => v === "ABSTAIN").length;
+      const passed = yes > no;
+      const status = passed ? ("SUCCESS" as const) : ("FAILED" as const);
+
+      const voteItem: ActivityItem = {
+        id: `${Date.now()}-v${agentIdx}`,
+        type: "VOTE",
+        agent: state.agents[agentIdx]?.name ?? proposal.agent,
+        action: `Vote ${passed ? "PASSED" : "REJECTED"} — ${yes}Y / ${no}N / ${abstain}A`,
+        target: proposal.target,
+        status,
+        timestamp: new Date().toISOString(),
+      };
+
+      addActivity(state, voteItem);
+      broadcast(state, {
+        event: "vote_complete",
+        data: { itemId: voteItem.id, status, voteResult: { yes, no, abstain, passed } },
+      });
+
+      if (passed) successful++;
+      else failed++;
+    }
+
+    state.cycleRunning = false;
+    state.lastCycleAt = new Date();
+    state.agents = state.agents.map((a) => ({ ...a, status: "IDLE" as const }));
+
+    broadcast(state, {
+      event: "cycle_complete",
+      data: { successful, failed, total: proposals.length },
+    });
+
+    // Refresh portfolio after cycle
+    await refreshPortfolio();
+  }
+
+  const server = Bun.serve({
+    port,
+    async fetch(req: Request, server) {
+      if (req.method === "OPTIONS") {
+        return new Response(null, { status: 204, headers: CORS_HEADERS });
+      }
+
+      const url = new URL(req.url);
+
+      if (url.pathname === "/ws") {
+        const upgraded = server.upgrade(req);
+        if (upgraded) return undefined;
+        return new Response("WebSocket upgrade expected", { status: 426, headers: CORS_HEADERS });
+      }
+
+      if (url.pathname === "/health") {
+        return jsonResponse({ status: "ok", timestamp: new Date().toISOString() });
+      }
+
+      if (url.pathname === "/api/portfolio" && req.method === "GET") {
+        return jsonResponse(state.portfolio);
+      }
+
+      if (url.pathname === "/api/pools" && req.method === "GET") {
+        const pools = await poolDataService.getAllPools();
+        return jsonResponse(pools);
+      }
+
+      if (url.pathname === "/api/agents" && req.method === "GET") {
+        return jsonResponse(state.agents);
+      }
+
+      if (url.pathname === "/api/activity" && req.method === "GET") {
+        return jsonResponse(state.activity);
+      }
+
+      if (url.pathname === "/api/cycle" && req.method === "POST") {
+        if (state.cycleRunning) {
+          return jsonResponse({ error: "Cycle already running" }, 409);
+        }
+        runCycle(); // fire-and-forget
+        return jsonResponse({ started: true });
+      }
+
+      return new Response("Not found", { status: 404, headers: CORS_HEADERS });
+    },
+    websocket: {
+      open(ws: ServerWebSocket<unknown>) {
+        state.wsClients.add(ws);
+        ws.send(
+          JSON.stringify({
+            event: "connected",
+            data: {
+              portfolio: state.portfolio,
+              agents: state.agents,
+              activity: state.activity,
+            },
+          }),
+        );
+      },
+      message(ws: ServerWebSocket<unknown>, msg: string | Buffer) {
+        try {
+          const data = JSON.parse(String(msg));
+          if (data.type === "trigger_cycle") {
+            runCycle();
+          }
+        } catch {}
+      },
+      close(ws: ServerWebSocket<unknown>) {
+        state.wsClients.delete(ws);
+      },
+    },
+  });
+
+  // Auto-run: first cycle after 2s, then every 5 minutes
+  setTimeout(runCycle, 2000);
+  setInterval(runCycle, 5 * 60 * 1000);
+
+  return server;
+}
