@@ -1,141 +1,117 @@
-# 🧠 CORTEX - Autonomous AI Agent Swarm for DeFi
+# CORTEX - Autonomous AI Agent Swarm for DeFi
 
-> Solana Mobile Hackathon 2026 - AI-powered DeFi portfolio optimization
+Solana Mobile Hackathon 2026 - AI-powered DeFi portfolio optimization
 
-## 🎯 What is CORTEX?
+## Overview
 
-CORTEX deploys 10 specialized AI agents that coordinate autonomously to optimize your DeFi portfolio on Solana. Agents analyze markets, debate strategies, vote democratically, and execute on-chain transactions - all while you sleep.
+CORTEX is a decentralized platform that deploys ten specialized AI agents to coordinate autonomously for DeFi portfolio optimization on the Solana blockchain. These agents analyze market conditions, formulate strategies, participate in democratic voting, and execute on-chain transactions to maximize returns and mitigate risks.
 
-## 🤖 The 10 Agents
+## Agent System
 
-- **YieldNeuron** - Maximizes DeFi returns by finding highest APY pools
-- **RiskNeuron** - Protects against losses and dangerous pools
-- **AirdropNeuron** - Farms token airdrops from new protocols
-- **StrategistNeuron** - Provides meta-level strategic coordination
-- **LiquidityNeuron** - Safety gatekeeper, prevents illiquid pool trades
-- **TrendNeuron** - Detects bullish/bearish market momentum
-- **SentimentNeuron** - Analyzes community sentiment and protocol reputation
-- **RebalancerNeuron** - Maintains optimal portfolio allocation
-- **WhaleWatcher** - Tracks large wallet movements for early signals
-- **GasOptimizer** - Minimizes transaction costs and batch operations
+The platform utilizes ten distinct agents, each with a specialized focus:
 
-## 🏗️ Tech Stack
+- **YieldNeuron**: Maximizes returns by identifying high-yield DeFi pools.
+- **RiskNeuron**: Implements protective measures against market volatility and protocol risks.
+- **AirdropNeuron**: Targets potential airdrop opportunities from emerging protocols.
+- **StrategistNeuron**: Coordinates meta-level strategies across the agent swarm.
+- **LiquidityNeuron**: Monitors pool liquidity to ensure trade execution stability.
+- **TrendNeuron**: Analyzes market momentum and price trends.
+- **SentimentNeuron**: Evaluates social sentiment and protocol reputation.
+- **RebalancerNeuron**: Optimizes portfolio allocation based on market shifts.
+- **WhaleWatcher**: Tracks significant on-chain movements for early market signals.
+- **GasOptimizer**: Minimizes transaction costs through efficient batching and timing.
 
-- **Mobile**: React Native + Expo (Coming Soon)
-- **Backend**: Bun + TypeScript
-- **AI**: Groq (Llama 3.3 70B Versatile)
+## Technical Stack
+
+- **Mobile**: React Native with Expo
+- **Backend**: Bun and TypeScript
+- **Artificial Intelligence**: Groq (Llama 3.3 70B Versatile)
 - **Blockchain**: Solana Web3.js (Devnet)
-- **DeFi**: Orca, Marinade, Kamino (Jupiter integration in progress)
+- **DeFi Integrations**: Orca, Marinade, Kamino (Jupiter integration in progress)
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 cortex/
 ├── backend/
 │   ├── src/
-│   │   ├── agents/          # 10 AI agent implementations
-│   │   ├── blockchain/      # Solana + pool data services
-│   │   ├── orchestrator.ts  # Multi-agent coordination
-│   │   └── test-playground/ # Agent & blockchain tests
+│   │   ├── agents/          # AI agent implementations
+│   │   ├── blockchain/      # Solana and protocol service layers
+│   │   ├── orchestrator.ts  # Coordination and consensus engine
+│   │   └── test-playground/ # Comprehensive testing environment
 │   └── package.json
-├── mobile/                  # React Native app (planned)
-├── docs/                    # Project documentation
+├── mobile/                  # React Native mobile application
+├── docs/                    # Technical documentation
 └── README.md
 ```
 
-## 🚀 Current Status
+## Operational Status
 
-### ✅ Completed
-- [x] 10 specialized AI agents with unique strategies
-- [x] Democratic voting system with coalition patterns
-- [x] Multi-agent coordination and consensus mechanism
-- [x] Solana devnet integration
-- [x] Real DeFi pool data (5 pools: Orca, Marinade, Kamino)
-- [x] Comprehensive test suite (11 test files)
+### Completed
+- Implementation of ten specialized AI agents with unique strategic models.
+- Democratic voting and consensus mechanism with coalition logic.
+- Multi-agent coordination framework.
+- Solana devnet integration.
+- DeFi pool data integration for Orca, Marinade, and Kamino.
+- Comprehensive test suite comprising eleven specialized test files.
 
-### 🔨 In Progress
-- [ ] Connect agents to real blockchain data
-- [ ] Jupiter aggregator integration for swaps
-- [ ] Transaction execution engine
-- [ ] Mobile UI (React Native + Expo)
+### In Progress
+- Live blockchain data synchronization for agents.
+- Jupiter aggregator integration for optimized swap execution.
+- Automated transaction execution engine.
+- Mobile user interface development.
 
-### 📋 Planned
-- [ ] Real-time pool data via API
-- [ ] Portfolio tracking and history
-- [ ] Push notifications for agent decisions
-- [ ] Demo video for hackathon submission
+### Planned
+- Real-time pool data via professional APIs.
+- Portfolio performance analytics and historical tracking.
+- Real-time push notifications for agent-driven decisions.
+- Submission documentation and demonstration for the hackathon.
 
-## 🧪 Running Tests
+## Testing and Validation
+
+Tests are executed within the backend environment:
 
 ```bash
 cd backend
 
-# Test individual agents
+# Execute individual agent validation
 bun run src/test-playground/test-yield-agent.ts
 bun run src/test-playground/test-liquidity-agent.ts
 
-# Test 10-agent coordination
+# Execute multi-agent coordination tests
 bun run src/test-playground/test-orchestration.ts
 
-# Test blockchain integration
+# Execute blockchain service integration tests
 bun run src/test-playground/test-blockchain-simple.ts
 ```
 
-## 🎬 How It Works
+## System Logic
 
-1. **Agents Think Independently**: Each agent analyzes the same portfolio and market data using AI
-2. **Proposals Generated**: Agents suggest actions (rebalance, provide liquidity, exit, etc.)
-3. **Democratic Voting**: All 10 agents vote on each proposal (YES/NO/ABSTAIN)
-4. **Consensus Reached**: Majority wins - proposals with more YES than NO votes pass
-5. **Execution**: Approved proposals execute on-chain via Jupiter aggregator
+1. **Analysis**: Each agent independently analyzes portfolio and market data using LLM-based reasoning.
+2. **Proposal Generation**: Agents generate specific actionable proposals (e.g., rebalancing, liquidity provision).
+3. **Consensus**: All ten agents vote on each proposal (Accept, Reject, or Abstain).
+4. **Validation**: A proposal is approved only if it receives a simple majority of affirmative votes.
+5. **Execution**: Approved actions are executed on-chain via the Jupiter aggregator.
 
-## 🔥 Key Features
+## Key Features
 
-- **True Multi-Agent AI**: Not a single AI with personas - 10 independent agents with real debate
-- **Democratic Consensus**: No dictator agent - decisions emerge from voting
-- **Coalition Dynamics**: Growth coalition (Yield + Airdrop) vs Safety coalition (Risk + Gas)
-- **Autonomous Operation**: Runs 24/7 without human intervention
-- **Mobile-First**: Built for Solana mobile hackathon
+- **Autonomous Multi-Agent Architecture**: Uses independent AI instances rather than simple personas.
+- **Democratic Governance**: Decisions emerge from consensus voting, preventing single-point failure in strategy.
+- **Coalition Dynamics**: Natural emergence of Growth (Yield, Airdrop) and Safety (Risk, Gas) coalitions.
+- **Continuous Operation**: Designed for 24/7 autonomous market monitoring and execution.
+- **Mobile-First Design**: Optimized for the Solana Mobile environment.
 
-## 📊 Example Agent Coordination
+## Documentation
 
-```
-Portfolio: 100 SOL (idle)
-Pools: Orca (12.5% APY), Marinade (6.8% APY), Kamino (8.2% APY)
+- [ARCHITECTURE.md](./ARCHITECTURE.md) - System design and technical specifications.
+- [PLAN.md](./PLAN.md) - Project roadmap and development milestones.
+- [PROGRESS.md](./PROGRESS.md) - Real-time development status.
+- [SETUP.md](./SETUP.md) - Environment configuration and installation guide.
 
-YieldNeuron:     "Provide liquidity to Orca (highest APY!)"
-RiskNeuron:      "Hold (too risky to enter now)"
-AirdropNeuron:   "Provide liquidity to Orca (airdrop potential!)"
-StrategistNeuron: "Diversify across multiple pools"
-GasOptimizer:    "Hold (save on gas fees)"
+## License
 
-Voting: 7 YES, 3 NO
-Result: ✅ PASSED - Portfolio will provide liquidity to Orca
-```
-
-## 🏆 Hackathon Goals
-
-**Core Demo:**
-- Show 10 agents coordinating autonomously
-- Execute real Solana devnet transactions
-- Mobile UI displaying agent debates in real-time
-
-**Stretch Goals:**
-- Historical performance tracking
-- Machine learning for agent improvement
-- Multi-chain support (start with Solana)
-
-## 📄 Documentation
-
-- [PLAN.md](./PLAN.md) - Project roadmap and milestones
-- [ARCHITECTURE.md](./ARCHITECTURE.md) - System design and architecture
-- [PROGRESS.md](./PROGRESS.md) - Current status and next steps
-- [SETUP.md](./SETUP.md) - Development setup instructions
-
-## 📄 License
-
-MIT
+This project is licensed under the MIT License.
 
 ---
 
-**Built with ❤️ for Solana Mobile Hackathon 2026**
+Built for the Solana Mobile Hackathon 2026.
