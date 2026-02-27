@@ -1,17 +1,27 @@
 <div align="center">
 
+<img src="./mobile/assets/icon.png" width="110" alt="CORTEX" />
+
+<br/>
+
 # CORTEX
 
-**Autonomous AI Agent Swarm for DeFi Portfolio Optimization**
+<p>
+  <samp>◈ &nbsp; A U T O N O M O U S &nbsp; A I &nbsp; A G E N T &nbsp; S W A R M &nbsp; &nbsp; ◈</samp>
+</p>
 
-[![Solana](https://img.shields.io/badge/Solana-9945FF?style=flat&logo=solana&logoColor=white)](https://solana.com)
-[![Bun](https://img.shields.io/badge/Bun-000000?style=flat&logo=bun&logoColor=white)](https://bun.sh)
-[![Expo](https://img.shields.io/badge/Expo-000020?style=flat&logo=expo&logoColor=white)](https://expo.dev)
-[![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=flat&logo=typescript&logoColor=white)](https://typescriptlang.org)
-[![Groq](https://img.shields.io/badge/Groq-F55036?style=flat&logoColor=white)](https://groq.com)
-[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg?style=flat)](LICENSE)
+<p><strong>DeFi Portfolio Optimization · Solana Blockchain · Democratic Consensus</strong></p>
 
-*Built for the Solana Mobile Hackathon 2026*
+[![Solana](https://img.shields.io/badge/Solana-9945FF?style=flat-square&logo=solana&logoColor=white)](https://solana.com)
+[![Bun](https://img.shields.io/badge/Bun-000000?style=flat-square&logo=bun&logoColor=white)](https://bun.sh)
+[![Expo](https://img.shields.io/badge/Expo-000020?style=flat-square&logo=expo&logoColor=white)](https://expo.dev)
+[![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://typescriptlang.org)
+[![Groq](https://img.shields.io/badge/Groq-F55036?style=flat-square&logoColor=white)](https://groq.com)
+[![License: MIT](https://img.shields.io/badge/License-MIT-22c55e?style=flat-square)](LICENSE)
+
+<br/>
+
+<sub>Built for the <strong>Solana Mobile Hackathon 2026</strong></sub>
 
 </div>
 
