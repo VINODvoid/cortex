@@ -1,117 +1,299 @@
-# CORTEX - Autonomous AI Agent Swarm for DeFi
+<div align="center">
 
-Solana Mobile Hackathon 2026 - AI-powered DeFi portfolio optimization
+# CORTEX
 
-## Overview
+**Autonomous AI Agent Swarm for DeFi Portfolio Optimization**
 
-CORTEX is a decentralized platform that deploys ten specialized AI agents to coordinate autonomously for DeFi portfolio optimization on the Solana blockchain. These agents analyze market conditions, formulate strategies, participate in democratic voting, and execute on-chain transactions to maximize returns and mitigate risks.
+[![Solana](https://img.shields.io/badge/Solana-9945FF?style=flat&logo=solana&logoColor=white)](https://solana.com)
+[![Bun](https://img.shields.io/badge/Bun-000000?style=flat&logo=bun&logoColor=white)](https://bun.sh)
+[![Expo](https://img.shields.io/badge/Expo-000020?style=flat&logo=expo&logoColor=white)](https://expo.dev)
+[![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=flat&logo=typescript&logoColor=white)](https://typescriptlang.org)
+[![Groq](https://img.shields.io/badge/Groq-F55036?style=flat&logoColor=white)](https://groq.com)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg?style=flat)](LICENSE)
 
-## Agent System
+*Built for the Solana Mobile Hackathon 2026*
 
-The platform utilizes ten distinct agents, each with a specialized focus:
+</div>
 
-- **YieldNeuron**: Maximizes returns by identifying high-yield DeFi pools.
-- **RiskNeuron**: Implements protective measures against market volatility and protocol risks.
-- **AirdropNeuron**: Targets potential airdrop opportunities from emerging protocols.
-- **StrategistNeuron**: Coordinates meta-level strategies across the agent swarm.
-- **LiquidityNeuron**: Monitors pool liquidity to ensure trade execution stability.
-- **TrendNeuron**: Analyzes market momentum and price trends.
-- **SentimentNeuron**: Evaluates social sentiment and protocol reputation.
-- **RebalancerNeuron**: Optimizes portfolio allocation based on market shifts.
-- **WhaleWatcher**: Tracks significant on-chain movements for early market signals.
-- **GasOptimizer**: Minimizes transaction costs through efficient batching and timing.
+---
 
-## Technical Stack
+## What is CORTEX?
 
-- **Mobile**: React Native with Expo
-- **Backend**: Bun and TypeScript
-- **Artificial Intelligence**: Groq (Llama 3.3 70B Versatile)
-- **Blockchain**: Solana Web3.js (Devnet)
-- **DeFi Integrations**: Orca, Marinade, Kamino (Jupiter integration in progress)
+CORTEX deploys a swarm of **10 specialized AI agents** that autonomously coordinate to optimize a DeFi portfolio on Solana. Each agent has a distinct strategic role — from yield hunting to risk management — and all decisions emerge from a **democratic voting consensus** rather than a single controller. No single agent can unilaterally execute a trade.
+
+The system runs continuously: agents analyze markets, propose actions, vote on proposals, and execute approved transactions on-chain — all without human intervention, all visible in real time through the mobile app.
+
+---
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────┐
+│              Mobile App  (React Native / Expo)       │
+│   Home · Agents · Activity · Portfolio · Settings   │
+└──────────────────────┬──────────────────────────────┘
+                       │  REST + WebSocket
+┌──────────────────────▼──────────────────────────────┐
+│              Backend API  (Bun + TypeScript)         │
+│   Orchestrator · State · Vault · Real-time Events   │
+└───────┬──────────────┬───────────────┬──────────────┘
+        │              │               │
+   ┌────▼─────┐  ┌─────▼──────┐  ┌────▼──────────┐
+   │  Agents  │  │  Groq API  │  │ Solana Network │
+   │  (×10)   │  │ Llama 3.3  │  │ Web3.js + RPC  │
+   └──────────┘  └────────────┘  └───────────────┘
+                                        │
+                              ┌─────────▼────────┐
+                              │  DeFi Protocols  │
+                              │ Orca · Marinade  │
+                              │ Kamino · Jupiter │
+                              └──────────────────┘
+```
+
+---
+
+## Agent Roster
+
+| Agent | Role | Strategy |
+|---|---|---|
+| **YieldNeuron** | Yield Optimizer | Identifies high-APY pools; votes YES on 8%+ opportunities |
+| **RiskNeuron** | Risk Guardian | Flags volatility and protocol risks; blocks low-TVL pools |
+| **AirdropNeuron** | Opportunity Hunter | Targets emerging protocols with airdrop potential |
+| **StrategistNeuron** | Meta-Coordinator | Aligns swarm direction; balances growth vs. safety |
+| **LiquidityNeuron** | Liquidity Monitor | Ensures sufficient pool depth for execution stability |
+| **TrendNeuron** | Momentum Analyst | Reads price trends and market momentum signals |
+| **SentimentNeuron** | Sentiment Tracker | Evaluates social signals and protocol reputation |
+| **RebalancerNeuron** | Portfolio Balancer | Realigns allocation as market conditions shift |
+| **WhaleWatcher** | On-chain Intelligence | Detects significant wallet movements as early signals |
+| **GasOptimizer** | Cost Minimizer | Batches and times transactions to minimize fees |
+
+> **Coalition dynamics:** Agents naturally form coalitions — Growth (Yield, Airdrop, Trend) and Safety (Risk, Gas, Liquidity) — creating emergent checks and balances without explicit rules.
+
+---
+
+## Decision Cycle
+
+```
+1. Trigger      →  User or scheduler initiates a cycle
+2. Analysis     →  All 10 agents analyze portfolio + market data via LLM
+3. Proposals    →  Each agent outputs a structured JSON action proposal
+4. Voting       →  All 10 agents vote YES / NO / ABSTAIN on each proposal
+5. Consensus    →  Simple majority required for approval
+6. Execution    →  Approved actions → Jupiter swaps → Solana transactions
+7. Broadcast    →  Results streamed to mobile via WebSocket in real time
+```
+
+Agent timeouts: **30s** for think phase, **20s** for vote phase — failed agents are skipped, not blocking.
+
+---
+
+## Tech Stack
+
+| Layer | Technology |
+|---|---|
+| Mobile | React Native, Expo, expo-router |
+| Styling | expo-linear-gradient, expo-blur, lucide-react-native |
+| Wallet | Solana Mobile Wallet Adapter |
+| State | React Context (AppContext, WalletContext) |
+| Backend | Bun, TypeScript |
+| AI / LLM | Groq SDK — Llama 3.3 70B Versatile |
+| Blockchain | @solana/web3.js, Solana testnet / mainnet-beta |
+| DeFi | Jupiter Aggregator, Orca, Marinade, Kamino |
+| Transport | REST (Bun.serve) + WebSocket |
+
+---
 
 ## Project Structure
 
 ```
 cortex/
 ├── backend/
-│   ├── src/
-│   │   ├── agents/          # AI agent implementations
-│   │   ├── blockchain/      # Solana and protocol service layers
-│   │   ├── orchestrator.ts  # Coordination and consensus engine
-│   │   └── test-playground/ # Comprehensive testing environment
-│   └── package.json
-├── mobile/                  # React Native mobile application
-├── docs/                    # Technical documentation
-└── README.md
+│   └── src/
+│       ├── agents/              # 10 agent implementations
+│       ├── api/
+│       │   └── server.ts        # REST + WebSocket server
+│       ├── blockchain/
+│       │   └── solana.ts        # SolanaService (transfer, vault, RPC)
+│       ├── orchestrator.ts      # Coordination + consensus engine
+│       ├── utils/               # LLM response parsing
+│       └── test-playground/     # Isolated agent + integration tests
+│
+├── mobile/
+│   ├── app/
+│   │   ├── (tabs)/
+│   │   │   ├── home.tsx         # Portfolio dashboard
+│   │   │   ├── agents.tsx       # Agent status + confidence
+│   │   │   ├── activity.tsx     # Proposal + vote feed
+│   │   │   └── portfolio.tsx    # Holdings breakdown
+│   │   ├── index.tsx            # Onboarding / entry
+│   │   ├── _layout.tsx          # Root layout + providers
+│   │   ├── user_profile.tsx     # Wallet profile modal
+│   │   └── system_settings.tsx  # App settings modal
+│   ├── components/
+│   │   └── BrandHeader.tsx      # Shared header component
+│   ├── context/
+│   │   ├── AppContext.tsx        # Portfolio, agents, activity state
+│   │   └── WalletContext.tsx     # Wallet connection + signing
+│   └── services/
+│       └── api.ts               # REST + WebSocket client
+│
+├── docs/                        # Technical documentation
+├── ARCHITECTURE.md
+├── PLAN.md
+├── PROGRESS.md
+└── SETUP.md
 ```
 
-## Operational Status
+---
 
-### Completed
-- Implementation of ten specialized AI agents with unique strategic models.
-- Democratic voting and consensus mechanism with coalition logic.
-- Multi-agent coordination framework.
-- Solana devnet integration.
-- DeFi pool data integration for Orca, Marinade, and Kamino.
-- Comprehensive test suite comprising eleven specialized test files.
+## Quick Start
 
-### In Progress
-- Live blockchain data synchronization for agents.
-- Jupiter aggregator integration for optimized swap execution.
-- Automated transaction execution engine.
-- Mobile user interface development.
+### Prerequisites
 
-### Planned
-- Real-time pool data via professional APIs.
-- Portfolio performance analytics and historical tracking.
-- Real-time push notifications for agent-driven decisions.
-- Submission documentation and demonstration for the hackathon.
+- [Bun](https://bun.sh) v1.0+
+- [Groq API key](https://console.groq.com) (free tier available)
+- [Expo Go](https://expo.dev/go) on your mobile device, or an Android/iOS simulator
 
-## Testing and Validation
+### 1. Clone
 
-Tests are executed within the backend environment:
+```bash
+git clone https://github.com/your-org/cortex.git
+cd cortex
+```
+
+### 2. Backend
+
+```bash
+cd backend
+bun install
+cp .env.example .env
+```
+
+Edit `backend/.env`:
+
+```env
+GROQ_API_KEY=your_groq_api_key_here
+
+# Optional — defaults to testnet if omitted
+SOLANA_NETWORK=testnet
+SOLANA_RPC_URL=https://api.testnet.solana.com
+
+# Required — base58-encoded private key for the vault wallet
+SOLANA_PRIVATE_KEY=your_wallet_private_key_here
+```
+
+Start the server:
+
+```bash
+bun run src/api/server.ts
+# Listening on http://localhost:3001
+```
+
+### 3. Mobile
+
+```bash
+cd mobile
+bun install
+bunx expo start
+```
+
+Scan the QR code with Expo Go, or press `a` / `i` for Android / iOS simulator.
+
+---
+
+## API Reference
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/api/portfolio` | Current portfolio state |
+| `GET` | `/api/agents` | Agent statuses and confidence levels |
+| `GET` | `/api/activity` | Proposal and vote history |
+| `GET` | `/api/pools` | Available DeFi pools with APY data |
+| `POST` | `/api/cycle` | Trigger a new agent evaluation cycle |
+| `GET` | `/api/vault` | Vault wallet address and SOL balance |
+| `GET` | `/api/blockhash` | Latest Solana blockhash |
+| `POST` | `/api/vault/deposit` | Submit a signed deposit transaction |
+| `POST` | `/api/vault/withdraw` | Withdraw SOL to a wallet address |
+| `WS` | `/ws` | Real-time cycle events stream |
+
+### WebSocket Events
+
+| Event | Payload |
+|---|---|
+| `cycle_start` | Cycle metadata |
+| `proposal` | Agent proposal item |
+| `vote_complete` | Vote result + YES/NO/ABSTAIN counts |
+| `execution_complete` | Transaction signature |
+| `cycle_complete` | Cycle summary |
+
+---
+
+## Testing
+
+All tests run in the backend:
 
 ```bash
 cd backend
 
-# Execute individual agent validation
+# Individual agent validation
 bun run src/test-playground/test-yield-agent.ts
 bun run src/test-playground/test-liquidity-agent.ts
+bun run src/test-playground/test-risk-agent.ts
 
-# Execute multi-agent coordination tests
+# Full swarm orchestration
 bun run src/test-playground/test-orchestration.ts
 
-# Execute blockchain service integration tests
+# Blockchain integration
 bun run src/test-playground/test-blockchain-simple.ts
 ```
 
-## System Logic
+---
 
-1. **Analysis**: Each agent independently analyzes portfolio and market data using LLM-based reasoning.
-2. **Proposal Generation**: Agents generate specific actionable proposals (e.g., rebalancing, liquidity provision).
-3. **Consensus**: All ten agents vote on each proposal (Accept, Reject, or Abstain).
-4. **Validation**: A proposal is approved only if it receives a simple majority of affirmative votes.
-5. **Execution**: Approved actions are executed on-chain via the Jupiter aggregator.
+## Status
 
-## Key Features
-
-- **Autonomous Multi-Agent Architecture**: Uses independent AI instances rather than simple personas.
-- **Democratic Governance**: Decisions emerge from consensus voting, preventing single-point failure in strategy.
-- **Coalition Dynamics**: Natural emergence of Growth (Yield, Airdrop) and Safety (Risk, Gas) coalitions.
-- **Continuous Operation**: Designed for 24/7 autonomous market monitoring and execution.
-- **Mobile-First Design**: Optimized for the Solana Mobile environment.
-
-## Documentation
-
-- [ARCHITECTURE.md](./ARCHITECTURE.md) - System design and technical specifications.
-- [PLAN.md](./PLAN.md) - Project roadmap and development milestones.
-- [PROGRESS.md](./PROGRESS.md) - Real-time development status.
-- [SETUP.md](./SETUP.md) - Environment configuration and installation guide.
-
-## License
-
-This project is licensed under the MIT License.
+| Component | Status |
+|---|---|
+| 10 agent implementations | Complete |
+| Democratic consensus framework | Complete |
+| Solana devnet / testnet integration | Complete |
+| DeFi pool data (Orca, Marinade, Kamino) | Complete |
+| Mobile dashboard UI | Complete |
+| WebSocket real-time updates | Complete |
+| Vault deposit / withdraw | Complete |
+| Mobile wallet adapter | Complete |
+| Jupiter aggregator swaps | In Progress |
+| Live transaction execution | In Progress |
+| Mainnet support | Planned |
+| Portfolio analytics + history | Planned |
+| Push notifications | Planned |
 
 ---
 
-Built for the Solana Mobile Hackathon 2026.
+## Security
+
+- Never commit `.env` files or private keys to version control
+- Use only testnet/devnet keypairs during development
+- Production vault keys must be managed via secure provider integrations
+
+---
+
+## Documentation
+
+- [ARCHITECTURE.md](./ARCHITECTURE.md) — System design and component specifications
+- [SETUP.md](./SETUP.md) — Detailed environment setup guide
+- [PLAN.md](./PLAN.md) — Roadmap and milestones
+- [PROGRESS.md](./PROGRESS.md) — Development log
+
+---
+
+## License
+
+MIT — see [LICENSE](./LICENSE)
+
+---
+
+<div align="center">
+
+Built for the **Solana Mobile Hackathon 2026**
+
+</div>
