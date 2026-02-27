@@ -12,11 +12,12 @@ import { RebalancerNeuron } from "../agents/rebalancer";
 import { GasOptimizerNeuron } from "../agents/gas";
 import { AirdropNeuron } from "../agents/airdrop";
 import type { Agent } from "../agents/base";
+import { JupiterService, TOKEN_MINTS } from "../blockchain/jupiter";
+import { TransactionExecutor } from "../blockchain/executor";
 import { createInitialState, addActivity, broadcast } from "./state";
 import type { AppState } from "./state";
 import type { ActivityItem } from "./types";
 
-const SOL_PRICE_USD = 170;
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -31,6 +32,8 @@ function jsonResponse(data: unknown, status = 200): Response {
 export function createServer(port = 3001) {
   const solanaService = new SolanaService("testnet");
   const poolDataService = new PoolDataService(solanaService.getConnection());
+  const jupiterService = new JupiterService(solanaService.getConnection());
+  const executor = new TransactionExecutor(solanaService, jupiterService, poolDataService);
   const groqKey = process.env.GROQ_API_KEY ?? "";
 
   const agents: Agent[] = [
@@ -51,12 +54,17 @@ export function createServer(port = 3001) {
   async function refreshPortfolio(): Promise<void> {
     try {
       const wallet = solanaService.getWallet();
-      const sol = await solanaService.getBalance(wallet.publicKey);
+      const [sol, usdc, solPrice] = await Promise.all([
+        solanaService.getBalance(wallet.publicKey),
+        solanaService.getTokenBalance(TOKEN_MINTS.USDC),
+        jupiterService.getSolPrice(),
+      ]);
+      const price = solPrice ?? 170;
       const prevTotal = state.portfolio.totalUsd;
-      const totalUsd = sol * SOL_PRICE_USD;
+      const totalUsd = sol * price + usdc;
       const change24h =
         prevTotal > 0 ? ((totalUsd - prevTotal) / prevTotal) * 100 : 0;
-      state.portfolio = { ...state.portfolio, sol, totalUsd, change24h };
+      state.portfolio = { ...state.portfolio, sol, usdc, totalUsd, change24h };
       broadcast(state, { event: "portfolio_update", data: state.portfolio });
     } catch {
       // devnet balance fetch failures are non-fatal
@@ -173,8 +181,29 @@ export function createServer(port = 3001) {
         data: { itemId: proposalId, status, voteResult: { yes, no, abstain, passed } },
       });
 
-      if (passed) successful++;
-      else failed++;
+      if (passed) {
+        successful++;
+        // Fire-and-forget execution — broadcast result when done
+        executor.executeProposal(proposal).then((execResult) => {
+          const execItem: ActivityItem = {
+            id: `${Date.now()}-e${agentIdx}`,
+            type: "EXECUTION",
+            agent: proposal.agent,
+            action: execResult.message,
+            target: execResult.transaction?.signature
+              ? `tx:${execResult.transaction.signature}`
+              : proposal.target,
+            status: execResult.success ? "SUCCESS" : "FAILED",
+            timestamp: new Date().toISOString(),
+            txSignature: execResult.transaction?.signature,
+          };
+          addActivity(state, execItem);
+          broadcast(state, { event: "execution_complete", data: execItem });
+          refreshPortfolio();
+        }).catch(() => {});
+      } else {
+        failed++;
+      }
     }
 
     state.cycleRunning = false;
@@ -286,6 +315,71 @@ export function createServer(port = 3001) {
           return jsonResponse({ txSignature });
         } catch (err: any) {
           return jsonResponse({ error: err?.message ?? "Transaction failed" }, 500);
+        }
+      }
+
+      if (url.pathname === "/api/vault/positions" && req.method === "GET") {
+        const [sol, usdc] = await Promise.all([
+          solanaService.getBalance(solanaService.getWallet().publicKey),
+          solanaService.getTokenBalance(TOKEN_MINTS.USDC),
+        ]);
+        return jsonResponse({ sol, usdc });
+      }
+
+      if (url.pathname === "/api/swap/quote" && req.method === "GET") {
+        const direction = url.searchParams.get("direction") ?? "SOL_TO_USDC";
+        const amount = parseFloat(url.searchParams.get("amount") ?? "0");
+        if (!amount || amount <= 0) {
+          return jsonResponse({ error: "amount must be a positive number" }, 400);
+        }
+        const inputMint = direction === "SOL_TO_USDC" ? TOKEN_MINTS.SOL : TOKEN_MINTS.USDC;
+        const outputMint = direction === "SOL_TO_USDC" ? TOKEN_MINTS.USDC : TOKEN_MINTS.SOL;
+        const amountInBaseUnits = direction === "SOL_TO_USDC"
+          ? jupiterService.solToLamports(amount)
+          : jupiterService.usdcToBaseUnits(amount);
+        try {
+          const quote = await jupiterService.getSwapQuote(inputMint, outputMint, amountInBaseUnits);
+          const estimatedOutput = direction === "SOL_TO_USDC"
+            ? jupiterService.baseUnitsToUsdc(Number(quote.outAmount))
+            : jupiterService.lamportsToSol(Number(quote.outAmount));
+          return jsonResponse({ direction, inputAmount: amount, estimatedOutput, priceImpactPct: quote.priceImpactPct });
+        } catch (err: any) {
+          return jsonResponse({ error: err?.message ?? "Quote failed" }, 502);
+        }
+      }
+
+      if (url.pathname === "/api/vault/swap" && req.method === "POST") {
+        let body: { direction?: string; amount?: number; slippageBps?: number };
+        try {
+          body = await req.json();
+        } catch {
+          return jsonResponse({ error: "Invalid JSON body" }, 400);
+        }
+        const { direction = "SOL_TO_USDC", amount, slippageBps = 100 } = body;
+        if (!amount || typeof amount !== "number" || amount <= 0) {
+          return jsonResponse({ error: "amount must be a positive number" }, 400);
+        }
+        const vaultBal = await solanaService.getBalance(solanaService.getWallet().publicKey);
+        if (direction === "SOL_TO_USDC" && amount > vaultBal) {
+          return jsonResponse({ error: `Insufficient vault balance (${vaultBal.toFixed(4)} SOL)` }, 400);
+        }
+        const inputMint = direction === "SOL_TO_USDC" ? TOKEN_MINTS.SOL : TOKEN_MINTS.USDC;
+        const outputMint = direction === "SOL_TO_USDC" ? TOKEN_MINTS.USDC : TOKEN_MINTS.SOL;
+        const amountInBaseUnits = direction === "SOL_TO_USDC"
+          ? jupiterService.solToLamports(amount)
+          : jupiterService.usdcToBaseUnits(amount);
+        try {
+          const quote = await jupiterService.getSwapQuote(inputMint, outputMint, amountInBaseUnits, slippageBps);
+          const result = await jupiterService.executeSwap(quote, solanaService.getWallet());
+          await refreshPortfolio();
+          return jsonResponse({
+            signature: result.signature,
+            explorer: result.explorer,
+            inputAmount: result.inputAmount,
+            outputAmount: result.outputAmount,
+          });
+        } catch (err: any) {
+          return jsonResponse({ error: err?.message ?? "Swap failed" }, 500);
         }
       }
 

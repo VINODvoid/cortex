@@ -44,9 +44,41 @@ export const TOKEN_MINTS = {
 export class JupiterService {
   private connection: Connection;
   private apiUrl = "https://lite-api.jup.ag/swap/v1";
+  private solPriceCache: { price: number; fetchedAt: number } | null = null;
+  private readonly PRICE_CACHE_TTL_MS = 30_000;
 
   constructor(connection: Connection) {
     this.connection = connection;
+  }
+
+  /**
+   * Fetch live SOL/USD price from Jupiter Price API v2.
+   * Caches result for 30s. Returns last cached price on failure; null if no cache.
+   */
+  async getSolPrice(): Promise<number | null> {
+    const now = Date.now();
+    if (
+      this.solPriceCache &&
+      now - this.solPriceCache.fetchedAt < this.PRICE_CACHE_TTL_MS
+    ) {
+      return this.solPriceCache.price;
+    }
+
+    try {
+      const response = await fetch(
+        `https://lite-api.jup.ag/price/v2?ids=${TOKEN_MINTS.SOL}`,
+      );
+      if (!response.ok) throw new Error(`Price API ${response.status}`);
+      const data = (await response.json()) as {
+        data: Record<string, { price: string }>;
+      };
+      const price = parseFloat(data.data[TOKEN_MINTS.SOL]?.price ?? "0");
+      if (!price || isNaN(price)) throw new Error("Invalid price");
+      this.solPriceCache = { price, fetchedAt: now };
+      return price;
+    } catch {
+      return this.solPriceCache?.price ?? null;
+    }
   }
 
   /**

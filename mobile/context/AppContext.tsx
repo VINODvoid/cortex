@@ -9,6 +9,10 @@ import React, {
 import { api } from "../services/api";
 import { WsManager } from "../services/ws";
 import { WS_URL } from "../constants/config";
+import {
+  notifyTradeExecuted,
+  notifyTradeFailed,
+} from "../services/notifications";
 
 // ─── Shared types ────────────────────────────────────────────────────────────
 
@@ -165,6 +169,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
     ws.on("execution_complete", (item: ActivityItem) => {
       setActivity((prev) => [item, ...prev].slice(0, 50));
+      if (item.status === "SUCCESS") {
+        notifyTradeExecuted(item.agent, item.action, item.txSignature).catch(
+          () => {},
+        );
+      } else if (item.status === "FAILED") {
+        notifyTradeFailed(item.agent, item.action).catch(() => {});
+      }
     });
 
     ws.on("cycle_complete", () => {

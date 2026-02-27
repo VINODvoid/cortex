@@ -29,4 +29,16 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ walletAddress, amountSol }),
     }).then((r) => r.json()) as Promise<{ txSignature?: string; error?: string }>,
+  getSwapQuote: (direction: string, amount: number) =>
+    get<{ estimatedOutput: number; priceImpactPct: string; inputAmount: number }>(
+      `/api/swap/quote?direction=${direction}&amount=${amount}`,
+    ),
+  executeVaultSwap: (direction: string, amount: number, slippageBps = 100) =>
+    fetch(`${API_BASE}/api/vault/swap`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ direction, amount, slippageBps }),
+    }).then((r) => r.json()) as Promise<{ signature?: string; explorer?: string; error?: string }>,
+  getVaultPositions: () =>
+    get<{ sol: number; usdc: number }>("/api/vault/positions"),
 };

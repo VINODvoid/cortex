@@ -10,6 +10,10 @@ import {
   ActivityIndicator,
   Easing,
   Image,
+  Modal,
+  TextInput,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -18,7 +22,6 @@ import Svg, { Path } from 'react-native-svg';
 import {
   ArrowUpRight,
   ArrowDownLeft,
-  Repeat,
   ChevronRight,
   Cpu,
   Layers,
@@ -26,6 +29,8 @@ import {
   Activity,
   Wallet,
   ArrowRight,
+  Repeat,
+  ArrowDown,
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import Animated, { 
@@ -37,7 +42,7 @@ import Animated, {
 import { useAppContext } from '../../context/AppContext';
 import { useWallet } from '../../context/WalletContext';
 import { BrandHeader } from '../../components/BrandHeader';
-import { INK, VOID, SPECTRUM, RADIUS, SPACE } from '../../constants/theme';
+import { INK, VOID, SPECTRUM, RADIUS, SPACE, TYPOGRAPHY, GLASS, BORDER } from '../../constants/theme';
 
 const { width, height } = Dimensions.get('window');
 
@@ -105,18 +110,111 @@ const CountUpNumber = ({ value }: { value: number }) => {
   return <Text style={styles.heroValue}>{displayValue}</Text>;
 };
 
-const ActionTile = ({ label, icon: Icon, color, onPress }: any) => {
+// ─── SWAP MODAL ────────────────────────────────────────────────────────────
+
+function SwapModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+  const [amount, setAmount] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleSwap = () => {
+    setLoading(true);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    setTimeout(() => {
+      setLoading(false);
+      onClose();
+    }, 2000);
+  };
+
   return (
-    <PressableScale onPress={onPress} style={styles.actionTile}>
-      <View style={styles.actionTileInner}>
-        <View style={[styles.actionIconCircle, { borderColor: color || 'rgba(255,255,255,0.1)' }]}>
-          <Icon size={18} color={color || INK.primary} strokeWidth={1.5} />
-        </View>
-        <Text style={styles.actionLabel}>{label}</Text>
-      </View>
-    </PressableScale>
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+        <Pressable style={swapStyles.overlay} onPress={onClose}>
+          <BlurView intensity={30} tint="dark" style={StyleSheet.absoluteFill} />
+          <Pressable style={swapStyles.sheet} onPress={() => {}}>
+            <View style={swapStyles.header}>
+              <Text style={swapStyles.title}>Neural Swap</Text>
+              <Pressable onPress={onClose} style={swapStyles.closeBtn}>
+                <Text style={swapStyles.closeText}>CANCEL</Text>
+              </Pressable>
+            </View>
+
+            <View style={swapStyles.inputGroup}>
+              {/* FROM */}
+              <View style={swapStyles.assetCard}>
+                <View style={swapStyles.assetInfo}>
+                  <Text style={swapStyles.assetLabel}>YOU PAY</Text>
+                  <View style={swapStyles.assetPicker}>
+                    <Image 
+                      source={require('../../assets/solana.png')} 
+                      style={swapStyles.assetIconImage} 
+                    />
+                    <Text style={swapStyles.assetName}>SOL</Text>
+                    <ChevronRight size={14} color={INK.ghost} />
+                  </View>
+                </View>
+                <TextInput
+                  style={swapStyles.amountInput}
+                  value={amount}
+                  onChangeText={setAmount}
+                  placeholder="0.00"
+                  placeholderTextColor={INK.ghost}
+                  keyboardType="decimal-pad"
+                  autoFocus
+                />
+              </View>
+
+              {/* DIVIDER ICON */}
+              <View style={swapStyles.dividerZone}>
+                <View style={swapStyles.dividerLine} />
+                <View style={swapStyles.iconCircle}>
+                  <ArrowDown size={16} color={SPECTRUM.violet} strokeWidth={2.5} />
+                </View>
+                <View style={swapStyles.dividerLine} />
+              </View>
+
+              {/* TO */}
+              <View style={swapStyles.assetCard}>
+                <View style={swapStyles.assetInfo}>
+                  <Text style={swapStyles.assetLabel}>YOU RECEIVE</Text>
+                  <View style={swapStyles.assetPicker}>
+                    <Image 
+                      source={require('../../assets/usd-coin.png')} 
+                      style={swapStyles.assetIconImage} 
+                    />
+                    <Text style={swapStyles.assetName}>USDC</Text>
+                    <ChevronRight size={14} color={INK.ghost} />
+                  </View>
+                </View>
+                <Text style={[swapStyles.amountInput, { color: INK.secondary }]}>
+                  {amount ? (parseFloat(amount) * 170).toFixed(2) : '0.00'}
+                </Text>
+              </View>
+            </View>
+
+            <View style={swapStyles.footer}>
+              <View style={swapStyles.metaRow}>
+                <Text style={swapStyles.metaLabel}>RATE</Text>
+                <Text style={swapStyles.metaValue}>1 SOL ≈ 170.42 USDC</Text>
+              </View>
+              <View style={swapStyles.metaRow}>
+                <Text style={swapStyles.metaLabel}>SLIPPAGE</Text>
+                <Text style={swapStyles.metaValue}>0.5%</Text>
+              </View>
+
+              <PressableScale style={swapStyles.swapBtn} onPress={handleSwap} disabled={loading || !amount}>
+                {loading ? (
+                  <ActivityIndicator color="#000" size="small" />
+                ) : (
+                  <Text style={swapStyles.swapBtnText}>AUTHORIZE SWAP</Text>
+                )}
+              </PressableScale>
+            </View>
+          </Pressable>
+        </Pressable>
+      </KeyboardAvoidingView>
+    </Modal>
   );
-};
+}
 
 // ─── MAIN DASHBOARD ────────────────────────────────────────────────────────
 
@@ -125,6 +223,7 @@ export default function Dashboard() {
   const { portfolio, agents, cycleRunning, triggerCycle, vault } = useAppContext();
   const { balance, connected } = useWallet();
   
+  const [swapVisible, setSwapVisible] = useState(false);
   const contentFade = useRef(new RNAnimated.Value(0)).current;
   const vaultBalance = vault?.balance ?? 0;
 
@@ -185,6 +284,27 @@ export default function Dashboard() {
           </View>
         </View>
 
+        {/* ─── Command Bar ─── */}
+        <View style={styles.commandRow}>
+          <PressableScale style={styles.commandPill} onPress={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)}>
+            <ArrowUpRight size={14} color={INK.primary} strokeWidth={2.5} />
+            <Text style={styles.commandText}>SEND</Text>
+          </PressableScale>
+          <View style={styles.commandDivider} />
+          <PressableScale style={styles.commandPill} onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            setSwapVisible(true);
+          }}>
+            <Repeat size={14} color={INK.primary} strokeWidth={2.5} />
+            <Text style={styles.commandText}>SWAP</Text>
+          </PressableScale>
+          <View style={styles.commandDivider} />
+          <PressableScale style={styles.commandPill} onPress={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)}>
+            <ArrowDownLeft size={14} color={INK.primary} strokeWidth={2.5} />
+            <Text style={styles.commandText}>RECEIVE</Text>
+          </PressableScale>
+        </View>
+
         {/* ─── Primary Command ─── */}
         <View style={styles.executeContainer}>
           <PressableScale
@@ -240,6 +360,8 @@ export default function Dashboard() {
         </View>
 
       </RNAnimated.ScrollView>
+
+      <SwapModal visible={swapVisible} onClose={() => setSwapVisible(false)} />
     </View>
   );
 }
@@ -273,6 +395,28 @@ const styles = StyleSheet.create({
   trendRow: { flexDirection: 'row', alignItems: 'center', marginTop: 12, gap: 6 },
   trendValue: { color: SPECTRUM.mint, fontSize: 13, fontWeight: '700' },
   alphaLabel: { color: 'rgba(255,255,255,0.2)', fontSize: 10, fontWeight: '800', letterSpacing: 2 },
+
+  // Command Row
+  commandRow: {
+    flexDirection: 'row',
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    borderRadius: 20,
+    padding: 4,
+    marginBottom: 40,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.05)',
+    alignItems: 'center',
+  },
+  commandPill: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
+  },
+  commandText: { color: INK.primary, fontSize: 10, fontWeight: '900', letterSpacing: 1 },
+  commandDivider: { width: 1, height: 16, backgroundColor: 'rgba(255,255,255,0.05)' },
 
   // Execution
   executeContainer: { marginBottom: 40 },
@@ -321,3 +465,49 @@ const styles = StyleSheet.create({
   agentStatusSmall: { color: 'rgba(255,255,255,0.3)', fontSize: 10, fontWeight: '800', letterSpacing: 1 },
 });
 
+const swapStyles = StyleSheet.create({
+  overlay: { flex: 1, justifyContent: 'flex-end' },
+  sheet: {
+    backgroundColor: VOID.rise2,
+    borderTopLeftRadius: RADIUS.xxl,
+    borderTopRightRadius: RADIUS.xxl,
+    padding: 28,
+    paddingBottom: 60,
+    borderTopWidth: 1,
+    borderColor: BORDER.subtle,
+  },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 32 },
+  title: { ...TYPOGRAPHY.title3, color: INK.primary },
+  closeBtn: { padding: 4 },
+  closeText: { ...TYPOGRAPHY.micro, color: INK.tertiary },
+
+  inputGroup: { gap: 4 },
+  assetCard: {
+    backgroundColor: GLASS.g1,
+    borderRadius: RADIUS.xl,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: BORDER.faint,
+  },
+  assetInfo: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  assetLabel: { ...TYPOGRAPHY.micro, color: INK.tertiary },
+  assetPicker: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: GLASS.g2, paddingHorizontal: 10, paddingVertical: 6, borderRadius: RADIUS.pill },
+  assetIcon: { width: 18, height: 18, borderRadius: 9, justifyContent: 'center', alignItems: 'center' },
+  assetIconImage: { width: 18, height: 18, borderRadius: 9 },
+  assetSymbol: { color: '#000', fontSize: 10, fontWeight: '900' },
+  assetName: { ...TYPOGRAPHY.caption1, color: INK.primary },
+  
+  amountInput: { ...TYPOGRAPHY.title2, color: INK.primary, fontSize: 32, fontWeight: '700' },
+
+  dividerZone: { height: 40, alignItems: 'center', justifyContent: 'center', marginVertical: -16, zIndex: 10 },
+  dividerLine: { width: 1, flex: 1, backgroundColor: BORDER.faint },
+  iconCircle: { width: 36, height: 36, borderRadius: 18, backgroundColor: VOID.rise2, borderWidth: 1, borderColor: BORDER.subtle, justifyContent: 'center', alignItems: 'center' },
+
+  footer: { marginTop: 32, gap: 16 },
+  metaRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  metaLabel: { ...TYPOGRAPHY.micro, color: INK.ghost },
+  metaValue: { ...TYPOGRAPHY.footnote, color: INK.secondary, fontWeight: '600' },
+
+  swapBtn: { height: 64, backgroundColor: INK.primary, borderRadius: RADIUS.md, justifyContent: 'center', alignItems: 'center', marginTop: 12 },
+  swapBtnText: { ...TYPOGRAPHY.headline, color: VOID.base, fontWeight: '900', letterSpacing: 1 },
+});

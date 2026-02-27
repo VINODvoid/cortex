@@ -175,36 +175,182 @@ export class TransactionExecutor {
   }
 
   /**
-   * Rebalance - Redistribute portfolio across targets
+   * Rebalance - Target 50% SOL / 50% USDC by value
    */
   private async executeRebalance(proposal: Proposal): Promise<ExecutionResult> {
-    // For MVP, treat rebalance similar to provide_liquidity
-    // In production, this would analyze current allocation and rebalance accordingly
-    console.log("   Note: Rebalance simplified to liquidity provision for MVP");
-    return await this.executeProvideLiquidity(proposal);
+    const wallet = this.solanaService.getWallet();
+    const [solBalance, usdcBalance, solPrice] = await Promise.all([
+      this.solanaService.getBalance(wallet.publicKey),
+      this.solanaService.getTokenBalance(TOKEN_MINTS.USDC),
+      this.jupiterService.getSolPrice(),
+    ]);
+    const price = solPrice ?? 170;
+    const totalUsd = solBalance * price + usdcBalance;
+
+    if (totalUsd < 0.5) {
+      return {
+        success: true,
+        action: proposal.action,
+        agent: proposal.agent,
+        message: "Portfolio too small to rebalance",
+      };
+    }
+
+    const targetUsd = totalUsd / 2;
+    const solValueUsd = solBalance * price;
+    const imbalance = Math.abs(solValueUsd - targetUsd) / totalUsd;
+
+    if (imbalance <= 0.05) {
+      return {
+        success: true,
+        action: proposal.action,
+        agent: proposal.agent,
+        message: `Portfolio balanced (SOL ${((solValueUsd / totalUsd) * 100).toFixed(1)}% / USDC ${((usdcBalance / totalUsd) * 100).toFixed(1)}%) — no rebalance needed`,
+      };
+    }
+
+    if (solValueUsd > targetUsd) {
+      // Excess SOL → sell to USDC
+      const excessSol = (solValueUsd - targetUsd) / price;
+      const swapLamports = this.jupiterService.solToLamports(excessSol);
+      console.log(`   Rebalance: swapping ${excessSol.toFixed(4)} SOL → USDC`);
+      const quote = await this.jupiterService.getSwapQuote(
+        TOKEN_MINTS.SOL,
+        TOKEN_MINTS.USDC,
+        swapLamports,
+        100,
+      );
+      const result = await this.jupiterService.executeSwap(quote, wallet);
+      const outUsdc = this.jupiterService.baseUnitsToUsdc(result.outputAmount);
+      return {
+        success: true,
+        action: proposal.action,
+        agent: proposal.agent,
+        target: proposal.target,
+        transaction: {
+          signature: result.signature,
+          explorer: result.explorer,
+          inputAmount: this.jupiterService.lamportsToSol(result.inputAmount),
+          outputAmount: outUsdc,
+        },
+        message: `Rebalanced: sold ${excessSol.toFixed(4)} SOL → ${outUsdc.toFixed(2)} USDC`,
+      };
+    } else {
+      // Excess USDC → buy SOL
+      const excessUsdc = usdcBalance - targetUsd;
+      const swapBaseUnits = this.jupiterService.usdcToBaseUnits(excessUsdc);
+      console.log(`   Rebalance: swapping ${excessUsdc.toFixed(2)} USDC → SOL`);
+      const quote = await this.jupiterService.getSwapQuote(
+        TOKEN_MINTS.USDC,
+        TOKEN_MINTS.SOL,
+        swapBaseUnits,
+        100,
+      );
+      const result = await this.jupiterService.executeSwap(quote, wallet);
+      const outSol = this.jupiterService.lamportsToSol(result.outputAmount);
+      return {
+        success: true,
+        action: proposal.action,
+        agent: proposal.agent,
+        target: proposal.target,
+        transaction: {
+          signature: result.signature,
+          explorer: result.explorer,
+          inputAmount: this.jupiterService.baseUnitsToUsdc(result.inputAmount),
+          outputAmount: outSol,
+        },
+        message: `Rebalanced: bought ${outSol.toFixed(4)} SOL with ${excessUsdc.toFixed(2)} USDC`,
+      };
+    }
   }
 
   /**
-   * Exit Position - Swap back to SOL
+   * Exit Position - Swap USDC back to SOL
    */
   private async executeExit(proposal: Proposal): Promise<ExecutionResult> {
+    const wallet = this.solanaService.getWallet();
+    const usdcBalance = await this.solanaService.getTokenBalance(TOKEN_MINTS.USDC);
+
+    if (usdcBalance < 0.01) {
+      return {
+        success: true,
+        action: proposal.action,
+        agent: proposal.agent,
+        target: proposal.target,
+        message: "No USDC to exit, holding SOL",
+      };
+    }
+
+    const amountBaseUnits = this.jupiterService.usdcToBaseUnits(usdcBalance);
+    console.log(`   Swapping ${usdcBalance.toFixed(2)} USDC → SOL`);
+
+    const quote = await this.jupiterService.getSwapQuote(
+      TOKEN_MINTS.USDC,
+      TOKEN_MINTS.SOL,
+      amountBaseUnits,
+      100,
+    );
+
+    const result = await this.jupiterService.executeSwap(quote, wallet);
+    const outSol = this.jupiterService.lamportsToSol(result.outputAmount);
+
     return {
       success: true,
       action: proposal.action,
       agent: proposal.agent,
       target: proposal.target,
-      message:
-        "Exit position acknowledged (requires tracking current positions - TBD)",
+      transaction: {
+        signature: result.signature,
+        explorer: result.explorer,
+        inputAmount: this.jupiterService.baseUnitsToUsdc(result.inputAmount),
+        outputAmount: outSol,
+      },
+      message: `Exited ${usdcBalance.toFixed(2)} USDC → ${outSol.toFixed(4)} SOL`,
     };
   }
 
   /**
-   * Buy Trend - Buy trending asset
+   * Buy Trend - Swap 50% of USDC balance into SOL
    */
   private async executeBuy(proposal: Proposal): Promise<ExecutionResult> {
-    // Similar to provide_liquidity but could target specific trending tokens
-    console.log("   Note: Buy trend simplified to liquidity provision for MVP");
-    return await this.executeProvideLiquidity(proposal);
+    const wallet = this.solanaService.getWallet();
+    const usdcBalance = await this.solanaService.getTokenBalance(TOKEN_MINTS.USDC);
+
+    if (usdcBalance < 1.0) {
+      return {
+        success: true,
+        action: proposal.action,
+        agent: proposal.agent,
+        message: "Insufficient USDC to buy — holding SOL",
+      };
+    }
+
+    const buyAmount = usdcBalance * 0.5;
+    const swapBaseUnits = this.jupiterService.usdcToBaseUnits(buyAmount);
+    console.log(`   Buy: swapping ${buyAmount.toFixed(2)} USDC → SOL`);
+
+    const quote = await this.jupiterService.getSwapQuote(
+      TOKEN_MINTS.USDC,
+      TOKEN_MINTS.SOL,
+      swapBaseUnits,
+      100,
+    );
+    const result = await this.jupiterService.executeSwap(quote, wallet);
+    const outSol = this.jupiterService.lamportsToSol(result.outputAmount);
+
+    return {
+      success: true,
+      action: proposal.action,
+      agent: proposal.agent,
+      target: proposal.target,
+      transaction: {
+        signature: result.signature,
+        explorer: result.explorer,
+        inputAmount: this.jupiterService.baseUnitsToUsdc(result.inputAmount),
+        outputAmount: outSol,
+      },
+      message: `Bought SOL: swapped ${buyAmount.toFixed(2)} USDC → ${outSol.toFixed(4)} SOL`,
+    };
   }
 
   /**

@@ -75,6 +75,25 @@ export class SolanaService {
     return this.network;
   }
 
+  isMainnet(): boolean {
+    return this.network === "mainnet-beta";
+  }
+
+  async getTokenBalance(mintAddress: string): Promise<number> {
+    try {
+      const mint = new PublicKey(mintAddress);
+      const accounts = await this.connection.getTokenAccountsByOwner(
+        this.wallet.publicKey,
+        { mint },
+      );
+      if (accounts.value.length === 0) return 0;
+      const balance = await this.connection.getTokenAccountBalance(accounts.value[0].pubkey);
+      return balance.value.uiAmount ?? 0;
+    } catch {
+      return 0;
+    }
+  }
+
   async requestAirdrop(): Promise<string> {
     const signature = await this.connection.requestAirdrop(
       this.wallet.publicKey,
