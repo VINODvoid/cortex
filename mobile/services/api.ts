@@ -13,4 +13,20 @@ export const api = {
   getActivity: () => get("/api/activity"),
   triggerCycle: () =>
     fetch(`${API_BASE}/api/cycle`, { method: "POST" }).then((r) => r.json()),
+  getVault: () =>
+    get<{ address: string; balance: number; network: string }>("/api/vault"),
+  getBlockhash: () =>
+    get<{ blockhash: string; lastValidBlockHeight: number }>("/api/blockhash"),
+  submitDeposit: (signedTx: string) =>
+    fetch(`${API_BASE}/api/vault/deposit`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ signedTx }),
+    }).then((r) => r.json()) as Promise<{ signature?: string; error?: string }>,
+  withdrawFromVault: (walletAddress: string, amountSol: number) =>
+    fetch(`${API_BASE}/api/vault/withdraw`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ walletAddress, amountSol }),
+    }).then((r) => r.json()) as Promise<{ txSignature?: string; error?: string }>,
 };

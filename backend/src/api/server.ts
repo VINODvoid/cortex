@@ -29,7 +29,7 @@ function jsonResponse(data: unknown, status = 200): Response {
 }
 
 export function createServer(port = 3001) {
-  const solanaService = new SolanaService("devnet");
+  const solanaService = new SolanaService("testnet");
   const poolDataService = new PoolDataService(solanaService.getConnection());
   const groqKey = process.env.GROQ_API_KEY ?? "";
 
@@ -83,10 +83,16 @@ export function createServer(port = 3001) {
     // Collect proposals (concurrent, individual failures skipped)
     const proposalResults = await Promise.allSettled(
       agents.map(async (agent, i) => {
-        const proposal = await agent.think(context);
+        // 30s timeout for agent thinking
+        const timeout = new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("Think timeout")), 30000)
+        );
 
+        const proposal = await Promise.race([agent.think(context), timeout]);
+
+        const proposalId = `${Date.now()}-p${i}`;
         const item: ActivityItem = {
-          id: `${Date.now()}-p${i}`,
+          id: proposalId,
           type: "PROPOSAL",
           agent: state.agents[i]?.name ?? proposal.agent,
           action: proposal.action,
@@ -99,27 +105,45 @@ export function createServer(port = 3001) {
 
         state.agents = state.agents.map((a, j) =>
           j === i
-            ? { ...a, status: "ACTIVE" as const, lastAction: proposal.action, confidence: proposal.confidence }
-            : a,
+            ? {
+                ...a,
+                status: "ACTIVE" as const,
+                lastAction: proposal.action,
+                confidence: proposal.confidence,
+              }
+            : a
         );
 
         broadcast(state, { event: "proposal", data: item });
-        return { proposal, agentIdx: i };
-      }),
+        return { proposal, agentIdx: i, proposalId };
+      })
     );
 
     const proposals = proposalResults
-      .filter((r): r is PromiseFulfilledResult<{ proposal: any; agentIdx: number }> => r.status === "fulfilled")
+      .filter(
+        (r): r is PromiseFulfilledResult<{ proposal: any; agentIdx: number; proposalId: string }> =>
+          r.status === "fulfilled"
+      )
       .map((r) => r.value);
 
     // Vote phase
     let successful = 0;
     let failed = 0;
 
-    for (const { proposal, agentIdx } of proposals) {
-      const voteResults = await Promise.allSettled(agents.map((a) => a.vote(proposal)));
+    for (const { proposal, agentIdx, proposalId } of proposals) {
+      const voteResults = await Promise.allSettled(
+        agents.map(async (a) => {
+          const timeout = new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error("Vote timeout")), 20000)
+          );
+          return Promise.race([a.vote(proposal), timeout]);
+        })
+      );
       const votes = voteResults
-        .filter((r): r is PromiseFulfilledResult<"YES" | "NO" | "ABSTAIN"> => r.status === "fulfilled")
+        .filter(
+          (r): r is PromiseFulfilledResult<"YES" | "NO" | "ABSTAIN"> =>
+            r.status === "fulfilled"
+        )
         .map((r) => r.value);
 
       const yes = votes.filter((v) => v === "YES").length;
@@ -127,6 +151,11 @@ export function createServer(port = 3001) {
       const abstain = votes.filter((v) => v === "ABSTAIN").length;
       const passed = yes > no;
       const status = passed ? ("SUCCESS" as const) : ("FAILED" as const);
+
+      // Update the original proposal status in state
+      state.activity = state.activity.map(item => 
+        item.id === proposalId ? { ...item, status } : item
+      );
 
       const voteItem: ActivityItem = {
         id: `${Date.now()}-v${agentIdx}`,
@@ -141,7 +170,7 @@ export function createServer(port = 3001) {
       addActivity(state, voteItem);
       broadcast(state, {
         event: "vote_complete",
-        data: { itemId: voteItem.id, status, voteResult: { yes, no, abstain, passed } },
+        data: { itemId: proposalId, status, voteResult: { yes, no, abstain, passed } },
       });
 
       if (passed) successful++;
@@ -195,6 +224,69 @@ export function createServer(port = 3001) {
 
       if (url.pathname === "/api/activity" && req.method === "GET") {
         return jsonResponse(state.activity);
+      }
+
+      if (url.pathname === "/api/blockhash" && req.method === "GET") {
+        const bh = await solanaService.getConnection().getLatestBlockhash("finalized");
+        return jsonResponse(bh);
+      }
+
+      if (url.pathname === "/api/vault/deposit" && req.method === "POST") {
+        let body: { signedTx?: string };
+        try {
+          body = await req.json();
+        } catch {
+          return jsonResponse({ error: "Invalid JSON body" }, 400);
+        }
+        if (!body.signedTx || typeof body.signedTx !== "string") {
+          return jsonResponse({ error: "signedTx is required" }, 400);
+        }
+        try {
+          const txBytes = Buffer.from(body.signedTx, "base64");
+          const signature = await solanaService.getConnection().sendRawTransaction(txBytes, {
+            skipPreflight: false,
+            preflightCommitment: "confirmed",
+          });
+          await solanaService.getConnection().confirmTransaction(signature, "confirmed");
+          return jsonResponse({ signature });
+        } catch (err: any) {
+          return jsonResponse({ error: err?.message ?? "Transaction failed" }, 500);
+        }
+      }
+
+      if (url.pathname === "/api/vault" && req.method === "GET") {
+        const balance = await solanaService.getBalance(solanaService.getWallet().publicKey);
+        return jsonResponse({
+          address: solanaService.getWalletAddress(),
+          balance,
+          network: solanaService.getNetwork(),
+        });
+      }
+
+      if (url.pathname === "/api/vault/withdraw" && req.method === "POST") {
+        let body: { walletAddress?: string; amountSol?: number };
+        try {
+          body = await req.json();
+        } catch {
+          return jsonResponse({ error: "Invalid JSON body" }, 400);
+        }
+        const { walletAddress, amountSol } = body;
+        if (!walletAddress || typeof walletAddress !== "string") {
+          return jsonResponse({ error: "walletAddress is required" }, 400);
+        }
+        if (!amountSol || typeof amountSol !== "number" || amountSol <= 0) {
+          return jsonResponse({ error: "amountSol must be a positive number" }, 400);
+        }
+        const vaultBalance = await solanaService.getBalance(solanaService.getWallet().publicKey);
+        if (amountSol > vaultBalance) {
+          return jsonResponse({ error: `Insufficient vault balance (${vaultBalance.toFixed(4)} SOL)` }, 400);
+        }
+        try {
+          const txSignature = await solanaService.sendSol(walletAddress, amountSol);
+          return jsonResponse({ txSignature });
+        } catch (err: any) {
+          return jsonResponse({ error: err?.message ?? "Transaction failed" }, 500);
+        }
       }
 
       if (url.pathname === "/api/cycle" && req.method === "POST") {

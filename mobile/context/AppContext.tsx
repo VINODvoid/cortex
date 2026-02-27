@@ -45,6 +45,12 @@ export interface Pool {
   tvl: number;
 }
 
+export interface VaultInfo {
+  address: string;
+  balance: number;
+  network: string;
+}
+
 // ─── Context ─────────────────────────────────────────────────────────────────
 
 interface AppContextValue {
@@ -54,7 +60,10 @@ interface AppContextValue {
   pools: Pool[];
   cycleRunning: boolean;
   isConnected: boolean;
+  vault: VaultInfo | null;
   triggerCycle: () => Promise<void>;
+  refreshVault: () => Promise<void>;
+  withdrawFromVault: (walletAddress: string, amountSol: number) => Promise<string>;
 }
 
 const defaultPortfolio: Portfolio = {
@@ -72,7 +81,10 @@ const AppContext = createContext<AppContextValue>({
   pools: [],
   cycleRunning: false,
   isConnected: false,
+  vault: null,
   triggerCycle: async () => {},
+  refreshVault: async () => {},
+  withdrawFromVault: async () => "",
 });
 
 // ─── Provider ─────────────────────────────────────────────────────────────────
@@ -84,7 +96,28 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [pools, setPools] = useState<Pool[]>([]);
   const [cycleRunning, setCycleRunning] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
+  const [vault, setVault] = useState<VaultInfo | null>(null);
   const wsRef = useRef<WsManager | null>(null);
+
+  const refreshVault = useCallback(async () => {
+    try {
+      const v = await api.getVault();
+      setVault(v);
+    } catch {
+      // non-fatal — backend may not be running
+    }
+  }, []);
+
+  const withdrawFromVault = useCallback(
+    async (walletAddress: string, amountSol: number): Promise<string> => {
+      const result = await api.withdrawFromVault(walletAddress, amountSol);
+      if (result.error) throw new Error(result.error);
+      // Refresh vault balance after withdrawal
+      await refreshVault();
+      return result.txSignature ?? "";
+    },
+    [refreshVault],
+  );
 
   useEffect(() => {
     // Fetch initial REST data
@@ -101,6 +134,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         setPools(pl);
       })
       .catch(() => {});
+
+    // Fetch vault info
+    refreshVault();
 
     // WebSocket
     const ws = new WsManager(WS_URL);
@@ -141,10 +177,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
     ws.connect();
 
+    // Poll vault balance every 30s
+    const vaultPoll = setInterval(refreshVault, 30000);
+
     return () => {
       ws.disconnect();
+      clearInterval(vaultPoll);
     };
-  }, []);
+  }, [refreshVault]);
 
   const triggerCycle = useCallback(async () => {
     if (cycleRunning) return;
@@ -153,7 +193,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <AppContext.Provider
-      value={{ portfolio, agents, activity, pools, cycleRunning, isConnected, triggerCycle }}
+      value={{
+        portfolio,
+        agents,
+        activity,
+        pools,
+        cycleRunning,
+        isConnected,
+        vault,
+        triggerCycle,
+        refreshVault,
+        withdrawFromVault,
+      }}
     >
       {children}
     </AppContext.Provider>

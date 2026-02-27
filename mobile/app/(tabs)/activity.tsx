@@ -1,11 +1,14 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   Pressable,
+  Animated,
   Dimensions,
+  Easing,
+  Linking,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -16,36 +19,23 @@ import {
   Clock,
   ChevronRight,
   Filter,
-  Activity,
+  ArrowUpRight,
+  Activity as ActivityIcon,
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useAppContext, type ActivityItem as ActivityItemType } from '../../context/AppContext';
+import { BrandHeader } from '../../components/BrandHeader';
+import { INK, VOID, SPECTRUM, BORDER } from '../../constants/theme';
 
 const { width, height } = Dimensions.get('window');
-
-const COLORS = {
-  BLACK: '#000000',
-  GLASS: 'rgba(255, 255, 255, 0.03)',
-  ACCENT: '#5E5CE6',
-  POSITIVE: '#30D158',
-  SECONDARY_TEXT: 'rgba(235, 235, 245, 0.5)',
-  BORDER: 'rgba(255, 255, 255, 0.08)',
-};
 
 function getIcon(type: ActivityItemType['type']) {
   switch (type) {
     case 'PROPOSAL': return Zap;
     case 'VOTE': return Shield;
     case 'EXECUTION': return Repeat;
-    default: return Activity;
+    default: return ActivityIcon;
   }
-}
-
-function getIconBg(type: ActivityItemType['type'], status: ActivityItemType['status']): string {
-  if (status === 'SUCCESS') return COLORS.POSITIVE;
-  if (status === 'FAILED') return 'rgba(255, 69, 58, 0.6)';
-  if (type === 'PROPOSAL') return COLORS.ACCENT;
-  return 'rgba(255, 255, 255, 0.1)';
 }
 
 function formatTime(ts: string): string {
@@ -53,28 +43,16 @@ function formatTime(ts: string): string {
   const now = Date.now();
   const diffMs = now - d.getTime();
   const diffMins = Math.floor(diffMs / 60000);
-  if (diffMins < 1) return 'just now';
-  if (diffMins < 60) return `${diffMins}m ago`;
+  if (diffMins < 1) return 'JUST NOW';
+  if (diffMins < 60) return `${diffMins}M AGO`;
   const diffH = Math.floor(diffMins / 60);
-  if (diffH < 24) return `${diffH}h ago`;
-  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-}
-
-function isToday(ts: string): boolean {
-  const d = new Date(ts);
-  const now = new Date();
-  return (
-    d.getFullYear() === now.getFullYear() &&
-    d.getMonth() === now.getMonth() &&
-    d.getDate() === now.getDate()
-  );
+  if (diffH < 24) return `${diffH}H AGO`;
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }).toUpperCase();
 }
 
 const ActivityRow = ({ item, isLast }: { item: ActivityItemType; isLast: boolean }) => {
   const Icon = getIcon(item.type);
-  const iconBg = getIconBg(item.type, item.status);
-  const subtitle = `${item.agent} • ${formatTime(item.timestamp)}`;
-  const value = item.target || (item.status === 'SUCCESS' ? 'Done' : item.status === 'FAILED' ? 'Failed' : '');
+  const statusColor = item.status === 'SUCCESS' ? SPECTRUM.mint : item.status === 'FAILED' ? SPECTRUM.coral : SPECTRUM.violet;
 
   return (
     <Pressable
@@ -86,156 +64,144 @@ const ActivityRow = ({ item, isLast }: { item: ActivityItemType; isLast: boolean
       ]}
     >
       <View style={styles.listLeftContent}>
-        <View style={[styles.smallIconCircle, { backgroundColor: iconBg }]}>
-          <Icon size={16} color="#FFF" />
+        <View style={[styles.iconCircle, { borderColor: 'rgba(255,255,255,0.06)' }]}>
+          <Icon size={14} color={statusColor} strokeWidth={1.5} />
         </View>
         <View style={styles.textContainer}>
-          <Text style={styles.itemTitle} numberOfLines={1} ellipsizeMode="tail">
-            {item.action}
-          </Text>
-          <View style={styles.itemSubRow}>
-            {item.status === 'PENDING' && (
-              <Clock size={12} color={COLORS.ACCENT} style={{ marginRight: 4 }} />
-            )}
-            <Text
-              style={[styles.itemDesc, item.status === 'PENDING' && { color: COLORS.ACCENT }]}
-              numberOfLines={1}
-              ellipsizeMode="tail"
-            >
-              {subtitle}
-            </Text>
-          </View>
+          <Text style={styles.itemTitle} numberOfLines={1}>{item.action.toUpperCase()}</Text>
+          <Text style={styles.itemDesc}>{item.agent.toUpperCase()} • {formatTime(item.timestamp)}</Text>
         </View>
       </View>
       <View style={styles.listRightContent}>
-        {value ? (
-          <Text style={styles.itemValue} numberOfLines={1} ellipsizeMode="clip">
-            {value}
-          </Text>
-        ) : null}
-        <ChevronRight size={14} color={COLORS.SECONDARY_TEXT} />
+        {item.status === 'PENDING' && (
+          <Clock size={10} color={SPECTRUM.violet} style={{ marginRight: 6 }} />
+        )}
+        <Text style={[styles.itemStatus, { color: statusColor }]}>
+          {item.status}
+        </Text>
+        <ChevronRight size={12} color="rgba(255,255,255,0.2)" />
       </View>
     </Pressable>
   );
 };
 
+// ─── MAIN ACTIVITY SCREEN ────────────────────────────────────────────────────
+
 export default function ActivityScreen() {
   const insets = useSafeAreaInsets();
   const { activity } = useAppContext();
+  
+  const contentFade = useRef(new Animated.Value(0)).current;
 
-  const todayItems = activity.filter((i) => isToday(i.timestamp));
-  const earlierItems = activity.filter((i) => !isToday(i.timestamp));
+  useEffect(() => {
+    Animated.timing(contentFade, { toValue: 1, duration: 1000, useNativeDriver: true }).start();
+  }, []);
+
+  const successCount = activity.filter(a => a.status === 'SUCCESS').length;
 
   return (
     <View style={styles.container}>
-      <View style={StyleSheet.absoluteFill}>
-        <View style={{ ...StyleSheet.absoluteFillObject, backgroundColor: COLORS.BLACK }} />
-        <LinearGradient
-          colors={['rgba(94, 92, 230, 0.15)', 'rgba(94, 92, 230, 0.05)', 'transparent']}
-          style={styles.topRimLight}
-          start={{ x: 0.5, y: 0 }}
-          end={{ x: 0.5, y: 1 }}
-        />
-        <LinearGradient
-          colors={['rgba(94, 92, 230, 0.12)', 'transparent']}
-          style={styles.fullScreenBloomTop}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 0.8, y: 0.8 }}
-        />
-        <LinearGradient
-          colors={['rgba(255, 255, 255, 0.03)', 'transparent']}
-          style={styles.fullScreenBloomBottom}
-          start={{ x: 1, y: 1 }}
-          end={{ x: 0.2, y: 0.2 }}
-        />
-      </View>
+      <BrandHeader />
 
-      <View style={[styles.brandHeader, { paddingTop: insets.top + 8 }]}>
-        <Text style={styles.brandName}>CORTEX</Text>
-      </View>
-
-      <ScrollView
+      <Animated.ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={[styles.scrollContent, { paddingBottom: 160 }]}
+        style={{ opacity: contentFade }}
       >
+        {/* ─── Success Hero ─── */}
         <View style={styles.heroSection}>
-          <Text style={styles.heroLabel}>Event Timeline</Text>
+          <Text style={styles.microLabel}>DECISION ACCURACY</Text>
           <View style={styles.focalRow}>
-            <Text style={styles.focalValue}>{String(activity.length).padStart(2, '0')}</Text>
-            <Text style={styles.focalSubValue}>Events</Text>
+            <Text style={styles.focalValue}>{successCount}</Text>
+            <Text style={styles.focalSubValue}>SUCCESSES</Text>
           </View>
-          <Pressable
-            onPress={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)}
-            style={styles.filterPill}
-          >
-            <Filter size={14} color={COLORS.ACCENT} />
-            <Text style={styles.filterText}>Filter History</Text>
-          </Pressable>
+          <View style={styles.accuracyPill}>
+            <View style={styles.activeDot} />
+            <Text style={styles.activeText}>SWARM OPERATING AT PEAK CAPACITY</Text>
+          </View>
         </View>
 
-        {activity.length === 0 && (
-          <View style={styles.emptyState}>
-            <Activity size={32} color={COLORS.SECONDARY_TEXT} />
-            <Text style={styles.emptyText}>No activity yet</Text>
-            <Text style={styles.emptySubtext}>Run a cycle from the home screen to see agent events here.</Text>
+        {/* ─── Logic Timeline ─── */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionLabel}>LOGIC TIMELINE</Text>
           </View>
-        )}
+          <View style={styles.timelineList}>
+            {activity.length === 0 ? (
+              <View style={styles.emptyState}>
+                <ActivityIcon size={24} color="rgba(255,255,255,0.1)" />
+                <Text style={styles.emptyText}>NO EVENTS RECORDED</Text>
+              </View>
+            ) : (
+              activity.map((item, i) => (
+                <ActivityRow key={item.id} item={item} isLast={i === activity.length - 1} />
+              ))
+            )}
+          </View>
+        </View>
 
-        {todayItems.length > 0 && (
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Today</Text></View>
-            <View style={styles.glassCard}>
-              {todayItems.map((item, i) => (
-                <ActivityRow key={item.id} item={item} isLast={i === todayItems.length - 1} />
-              ))}
-            </View>
+        {/* ─── Verification Archive ─── */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionLabel}>ON-CHAIN VERIFICATION</Text>
           </View>
-        )}
-
-        {earlierItems.length > 0 && (
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Earlier</Text></View>
-            <View style={styles.glassCard}>
-              {earlierItems.map((item, i) => (
-                <ActivityRow key={item.id} item={item} isLast={i === earlierItems.length - 1} />
-              ))}
-            </View>
+          <View style={styles.glassList}>
+            {activity.filter(a => a.txSignature).slice(0, 3).map((item, i, arr) => (
+              <Pressable key={i} style={[styles.verificationItem, i === arr.length - 1 && { borderBottomWidth: 0 }]} onPress={() => Linking.openURL(`https://explorer.solana.com/tx/${item.txSignature}?cluster=testnet`)}>
+                <View>
+                  <Text style={styles.verifTitle}>{item.action.toUpperCase()}</Text>
+                  <Text style={styles.verifSig}>{item.txSignature?.slice(0, 16)}...</Text>
+                </View>
+                <ArrowUpRight size={14} color={SPECTRUM.violet} />
+              </Pressable>
+            ))}
+            {activity.filter(a => a.txSignature).length === 0 && (
+              <Text style={styles.emptyTextSmall}>Awaiting executions...</Text>
+            )}
           </View>
-        )}
-      </ScrollView>
+        </View>
+      </Animated.ScrollView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.BLACK },
-  topRimLight: { position: 'absolute', top: 0, left: 0, right: 0, height: height * 0.15, opacity: 0.6 },
-  fullScreenBloomTop: { position: 'absolute', top: -height * 0.3, left: -width * 0.4, width: width * 1.8, height: height * 0.9 },
-  fullScreenBloomBottom: { position: 'absolute', bottom: -height * 0.2, right: -width * 0.4, width: width * 1.6, height: height * 0.8 },
-  brandHeader: { alignItems: 'center', paddingBottom: 24 },
-  brandName: { color: 'rgba(255,255,255,0.3)', fontSize: 11, fontWeight: '900', letterSpacing: 8 },
-  scrollContent: { paddingHorizontal: 24 },
-  heroSection: { alignItems: 'center', marginVertical: 48 },
-  heroLabel: { color: COLORS.SECONDARY_TEXT, fontSize: 13, fontWeight: '600', letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 12 },
+  container: { flex: 1, backgroundColor: '#000' },
+  scrollContent: { paddingHorizontal: 28, paddingTop: 10 },
+
+  // Hero Section
+  heroSection: { alignItems: 'center', marginVertical: 32 },
+  microLabel: { color: 'rgba(255,255,255,0.2)', fontSize: 10, fontWeight: '800', letterSpacing: 2, marginBottom: 12 },
   focalRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 8 },
-  focalValue: { color: '#FFFFFF', fontSize: 64, fontWeight: '800', letterSpacing: -2, lineHeight: 64 },
-  focalSubValue: { color: 'rgba(255,255,255,0.3)', fontSize: 32, fontWeight: '600', marginBottom: 6 },
-  filterPill: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(94, 92, 230, 0.15)', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, gap: 8, marginTop: 24 },
-  filterText: { color: COLORS.ACCENT, fontSize: 13, fontWeight: '700' },
+  focalValue: { color: '#FFF', fontSize: 64, fontWeight: '800', letterSpacing: -2, lineHeight: 64 },
+  focalSubValue: { color: 'rgba(255,255,255,0.3)', fontSize: 24, fontWeight: '600', marginBottom: 8 },
+  accuracyPill: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(52, 211, 153, 0.05)', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, gap: 8, marginTop: 24, borderWidth: 1, borderColor: 'rgba(52, 211, 153, 0.1)' },
+  activeDot: { width: 4, height: 4, borderRadius: 2, backgroundColor: SPECTRUM.mint },
+  activeText: { color: SPECTRUM.mint, fontSize: 9, fontWeight: '900', letterSpacing: 1 },
+
+  // Section Styles
+  section: { marginBottom: 40 },
+  sectionHeader: { marginBottom: 16 },
+  sectionLabel: { color: 'rgba(255,255,255,0.2)', fontSize: 10, fontWeight: '800', letterSpacing: 2 },
+  timelineList: { backgroundColor: 'rgba(255,255,255,0.02)', borderRadius: 24, paddingHorizontal: 20, borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)' },
+  
+  // List Item Styles
+  listItem: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 18, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.03)' },
+  listLeftContent: { flexDirection: 'row', alignItems: 'center', gap: 14, flex: 1 },
+  iconCircle: { width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.03)', justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)' },
+  textContainer: { flex: 1 },
+  itemTitle: { color: '#FFF', fontSize: 13, fontWeight: '700', letterSpacing: 0.5 },
+  itemDesc: { color: 'rgba(255,255,255,0.3)', fontSize: 9, fontWeight: '800', letterSpacing: 1, marginTop: 4 },
+  listRightContent: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  itemStatus: { fontSize: 10, fontWeight: '900', letterSpacing: 1 },
+
   emptyState: { alignItems: 'center', paddingVertical: 48, gap: 12 },
-  emptyText: { color: '#FFF', fontSize: 18, fontWeight: '600' },
-  emptySubtext: { color: COLORS.SECONDARY_TEXT, fontSize: 14, textAlign: 'center', lineHeight: 20 },
-  section: { marginBottom: 32 },
-  sectionHeader: { marginBottom: 16, paddingHorizontal: 4 },
-  sectionTitle: { color: '#FFF', fontSize: 20, fontWeight: '700', letterSpacing: -0.5 },
-  glassCard: { backgroundColor: COLORS.GLASS, borderRadius: 28, paddingHorizontal: 20, borderWidth: 1, borderColor: COLORS.BORDER, overflow: 'hidden' },
-  listItem: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 20, borderBottomWidth: 1, borderBottomColor: COLORS.BORDER, overflow: 'hidden' },
-  listLeftContent: { flexDirection: 'row', alignItems: 'center', gap: 16, flex: 1, overflow: 'hidden' },
-  textContainer: { flex: 1, overflow: 'hidden' },
-  smallIconCircle: { width: 36, height: 36, borderRadius: 18, justifyContent: 'center', alignItems: 'center' },
-  itemTitle: { color: '#FFF', fontSize: 17, fontWeight: '600', marginBottom: 2 },
-  itemSubRow: { flexDirection: 'row', alignItems: 'center' },
-  itemDesc: { color: COLORS.SECONDARY_TEXT, fontSize: 14, fontWeight: '400' },
-  listRightContent: { flexDirection: 'row', alignItems: 'center', gap: 8, minWidth: 80, justifyContent: 'flex-end' },
-  itemValue: { color: '#FFF', fontSize: 16, fontWeight: '600', textAlign: 'right' },
+  emptyText: { color: 'rgba(255,255,255,0.2)', fontSize: 10, fontWeight: '800', letterSpacing: 2 },
+  emptyTextSmall: { color: 'rgba(255,255,255,0.2)', fontSize: 10, fontWeight: '800', padding: 20, textAlign: 'center' },
+
+  // Verification Archive
+  glassList: { backgroundColor: 'rgba(255,255,255,0.02)', borderRadius: 24, paddingHorizontal: 20, borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)' },
+  verificationItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 18, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.03)' },
+  verifTitle: { color: '#FFF', fontSize: 11, fontWeight: '800', letterSpacing: 0.5, marginBottom: 4 },
+  verifSig: { color: 'rgba(255,255,255,0.3)', fontSize: 10, fontWeight: '600' },
 });

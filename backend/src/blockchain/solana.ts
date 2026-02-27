@@ -3,6 +3,9 @@ import {
   Keypair,
   LAMPORTS_PER_SOL,
   PublicKey,
+  SystemProgram,
+  Transaction,
+  sendAndConfirmTransaction,
 } from "@solana/web3.js";
 import bs58 from "bs58";
 
@@ -35,19 +38,25 @@ function loadWallet(): Keypair {
   return Keypair.fromSecretKey(bs58.decode(trimmed));
 }
 
+type Network = "devnet" | "testnet" | "mainnet-beta";
+
+function rpcUrl(network: Network): string {
+  switch (network) {
+    case "mainnet-beta": return "https://api.mainnet-beta.solana.com";
+    case "testnet": return "https://api.testnet.solana.com";
+    default: return "https://api.devnet.solana.com";
+  }
+}
+
 export class SolanaService {
   private connection: Connection;
   private wallet: Keypair;
-  private network: "devnet" | "mainnet-beta";
+  private network: Network;
 
-  constructor(network: "devnet" | "mainnet-beta" = "devnet") {
-    this.network = network;
+  constructor(network: Network = "devnet") {
+    this.network = (process.env.SOLANA_NETWORK as Network | undefined) ?? network;
 
-    const rpc =
-      process.env.SOLANA_RPC_URL ??
-      (network === "devnet"
-        ? "https://api.devnet.solana.com"
-        : "https://api.mainnet-beta.solana.com");
+    const rpc = process.env.SOLANA_RPC_URL ?? rpcUrl(this.network);
 
     this.connection = new Connection(rpc, "confirmed");
     this.wallet = loadWallet();
@@ -62,6 +71,10 @@ export class SolanaService {
     return this.wallet.publicKey.toBase58();
   }
 
+  getNetwork(): string {
+    return this.network;
+  }
+
   async requestAirdrop(): Promise<string> {
     const signature = await this.connection.requestAirdrop(
       this.wallet.publicKey,
@@ -69,6 +82,22 @@ export class SolanaService {
     );
     await this.connection.confirmTransaction(signature);
     return signature;
+  }
+
+  async sendSol(toAddress: string, amountSol: number): Promise<string> {
+    const to = new PublicKey(toAddress);
+    const lamports = Math.round(amountSol * LAMPORTS_PER_SOL);
+    const { blockhash, lastValidBlockHeight } =
+      await this.connection.getLatestBlockhash();
+    const tx = new Transaction({ feePayer: this.wallet.publicKey, blockhash, lastValidBlockHeight })
+      .add(
+        SystemProgram.transfer({
+          fromPubkey: this.wallet.publicKey,
+          toPubkey: to,
+          lamports,
+        }),
+      );
+    return sendAndConfirmTransaction(this.connection, tx, [this.wallet]);
   }
 
   getWallet(): Keypair {

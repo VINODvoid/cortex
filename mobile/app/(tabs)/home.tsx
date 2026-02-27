@@ -5,255 +5,319 @@ import {
   StyleSheet,
   ScrollView,
   Pressable,
-  Animated,
+  Animated as RNAnimated,
   Dimensions,
   ActivityIndicator,
+  Easing,
+  Image,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
+import Svg, { Path } from 'react-native-svg';
 import {
   ArrowUpRight,
   ArrowDownLeft,
   Repeat,
   ChevronRight,
-  LayoutGrid,
-  Zap,
+  Cpu,
+  Layers,
+  TrendingUp,
+  Activity,
+  Wallet,
+  ArrowRight,
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
+import Animated, { 
+  useSharedValue, 
+  useAnimatedStyle, 
+  withSpring, 
+  FadeInDown 
+} from 'react-native-reanimated';
 import { useAppContext } from '../../context/AppContext';
+import { useWallet } from '../../context/WalletContext';
+import { BrandHeader } from '../../components/BrandHeader';
+import { INK, VOID, SPECTRUM, RADIUS, SPACE } from '../../constants/theme';
 
 const { width, height } = Dimensions.get('window');
 
-const COLORS = {
-  BLACK: '#000000',
-  GLASS: 'rgba(255, 255, 255, 0.03)',
-  GLASS_STONG: 'rgba(255, 255, 255, 0.06)',
-  ACCENT: '#5E5CE6',
-  POSITIVE: '#30D158',
-  SECONDARY_TEXT: 'rgba(235, 235, 245, 0.5)',
-  BORDER: 'rgba(255, 255, 255, 0.08)',
+// ─── INTERNAL COMPONENTS ───────────────────────────────────────────────────
+
+const Logo = ({ size = 24, color = "#FFF" }: { size?: number; color?: string }) => (
+  <Svg width={size} height={size * (48/38)} viewBox="0 0 38 48">
+    <Path 
+      fillRule="evenodd" 
+      clipRule="evenodd" 
+      d="m19 12.5c-4.1421 0-7.5-3.35786-7.5-7.5h-5c0 6.9036 5.5964 12.5 12.5 12.5s12.5-5.5964 12.5-12.5h-5c0 4.14214-3.3579 7.5-7.5 7.5zm-7.5 30.5c0-4.1421 3.3579-7.5 7.5-7.5s7.5 3.3579 7.5 7.5h5c0-6.9036-5.5964-12.5-12.5-12.5s-12.5 5.5964-12.5 12.5zm-4-19c0-4.1421-3.35786-7.5-7.5-7.5v-5c6.90356 0 12.5 5.5964 12.5 12.5s-5.59644 12.5-12.5 12.5v-5c4.14214 0 7.5-3.3579 7.5-7.5zm23 0c0-4.1421 3.3579-7.5 7.5-7.5v-5c-6.9036 0-12.5 5.5964-12.5 12.5s5.5964 12.5 12.5 12.5v-5c-4.1421 0-7.5-3.3579-7.5-7.5z" 
+      fill={color} 
+    />
+  </Svg>
+);
+
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+
+const PressableScale = ({ children, onPress, style, disabled }: any) => {
+  const scale = useSharedValue(1);
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+
+  const handlePressIn = () => {
+    if (disabled) return;
+    scale.value = withSpring(0.97, { damping: 10, stiffness: 200 });
+  };
+  const handlePressOut = () => {
+    scale.value = withSpring(1);
+  };
+
+  return (
+    <AnimatedPressable
+      onPressIn={handlePressIn}
+      onPressOut={handlePressOut}
+      onPress={onPress}
+      disabled={disabled}
+      style={[style, animatedStyle]}
+    >
+      {children}
+    </AnimatedPressable>
+  );
 };
 
 const CountUpNumber = ({ value }: { value: number }) => {
   const [displayValue, setDisplayValue] = useState('0.00');
-  const animatedValue = useRef(new Animated.Value(0)).current;
+  const animatedValue = useRef(new RNAnimated.Value(0)).current;
+  
   useEffect(() => {
     animatedValue.addListener(({ value }) => {
       setDisplayValue(
         value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
       );
     });
-    Animated.spring(animatedValue, {
+    RNAnimated.spring(animatedValue, {
       toValue: value,
-      damping: 25,
-      stiffness: 80,
+      damping: 20,
+      stiffness: 70,
       useNativeDriver: false,
     }).start();
     return () => animatedValue.removeAllListeners();
   }, [value]);
-  return <Text style={styles.focalValue}>{displayValue}</Text>;
+  
+  return <Text style={styles.heroValue}>{displayValue}</Text>;
 };
 
-const InsetListItem = ({ title, desc, value, status, isLast }: any) => (
-  <View style={[styles.listItem, isLast && { borderBottomWidth: 0 }]}>
-    <View style={styles.listTextContent}>
-      <Text style={styles.itemTitle} numberOfLines={1}>{title}</Text>
-      <Text style={styles.itemDesc} numberOfLines={1}>{desc}</Text>
-    </View>
-    <View style={styles.listValueContent}>
-      <Text
-        style={[styles.itemValue, status === 'POSITIVE' && { color: COLORS.POSITIVE }]}
-        numberOfLines={1}
-      >
-        {value}
-      </Text>
-      <ChevronRight size={14} color={COLORS.SECONDARY_TEXT} />
-    </View>
-  </View>
-);
+const ActionTile = ({ label, icon: Icon, color, onPress }: any) => {
+  return (
+    <PressableScale onPress={onPress} style={styles.actionTile}>
+      <View style={styles.actionTileInner}>
+        <View style={[styles.actionIconCircle, { borderColor: color || 'rgba(255,255,255,0.1)' }]}>
+          <Icon size={18} color={color || INK.primary} strokeWidth={1.5} />
+        </View>
+        <Text style={styles.actionLabel}>{label}</Text>
+      </View>
+    </PressableScale>
+  );
+};
+
+// ─── MAIN DASHBOARD ────────────────────────────────────────────────────────
 
 export default function Dashboard() {
   const insets = useSafeAreaInsets();
-  const { portfolio, agents, cycleRunning, triggerCycle } = useAppContext();
+  const { portfolio, agents, cycleRunning, triggerCycle, vault } = useAppContext();
+  const { balance, connected } = useWallet();
+  
+  const contentFade = useRef(new RNAnimated.Value(0)).current;
+  const vaultBalance = vault?.balance ?? 0;
 
-  const displayAgents = agents.slice(0, 3).map((agent) => ({
-    title: agent.name,
-    desc: agent.role.charAt(0).toUpperCase() + agent.role.slice(1),
-    value: agent.status === 'IDLE' ? 'Idle' : agent.status === 'THINKING' ? 'Thinking' : 'Active',
-    status: agent.status !== 'IDLE' ? 'POSITIVE' : 'NEUTRAL',
-  }));
-
-  const solUsd = portfolio.sol > 0
-    ? `$${(portfolio.sol * 170).toLocaleString(undefined, { maximumFractionDigits: 0 })}`
-    : '—';
+  useEffect(() => {
+    RNAnimated.timing(contentFade, { toValue: 1, duration: 1000, useNativeDriver: true }).start();
+  }, []);
 
   const handleCycle = async () => {
+    if (vaultBalance <= 0) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      return;
+    }
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     await triggerCycle();
   };
 
+  const activeAgents = agents.filter(a => a.status !== 'IDLE').length;
+  const latestThought = agents.find(a => a.status === 'ACTIVE' || a.status === 'THINKING')?.lastAction 
+    || "Monitoring global liquidity clusters...";
+
   return (
     <View style={styles.container}>
-      <View style={StyleSheet.absoluteFill}>
-        <View style={{ ...StyleSheet.absoluteFillObject, backgroundColor: COLORS.BLACK }} />
-        <LinearGradient
-          colors={['rgba(94, 92, 230, 0.15)', 'rgba(94, 92, 230, 0.05)', 'transparent']}
-          style={styles.topRimLight}
-          start={{ x: 0.5, y: 0 }}
-          end={{ x: 0.5, y: 1 }}
-        />
-        <LinearGradient
-          colors={['rgba(94, 92, 230, 0.12)', 'transparent']}
-          style={styles.fullScreenBloomTop}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 0.8, y: 0.8 }}
-        />
-        <LinearGradient
-          colors={['rgba(48, 209, 88, 0.03)', 'transparent']}
-          style={styles.fullScreenBloomBottom}
-          start={{ x: 1, y: 1 }}
-          end={{ x: 0.2, y: 0.2 }}
-        />
-      </View>
+      <BrandHeader />
 
-      <View style={[styles.brandHeader, { paddingTop: insets.top + 8 }]}>
-        <Text style={styles.brandName}>CORTEX</Text>
-      </View>
-
-      <ScrollView
+      <RNAnimated.ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={[styles.scrollContent, { paddingBottom: 160 }]}
+        style={{ opacity: contentFade }}
       >
-        <View style={styles.heroSection}>
-          <Text style={styles.heroLabel}>Portfolio Value</Text>
+        {/* ─── Vault Awareness Section ─── */}
+        <View style={styles.statusSection}>
+          {vaultBalance <= 0 ? (
+            <PressableScale style={styles.vaultAlertCard}>
+              <View style={styles.alertHeader}>
+                <View style={[styles.statusDot, { backgroundColor: SPECTRUM.coral }]} />
+                <Text style={styles.alertTitle}>VAULT DEACTIVATED</Text>
+              </View>
+              <Text style={styles.alertDesc}>Deposit SOL to authorize the neural swarm and begin automated management.</Text>
+            </PressableScale>
+          ) : (
+            <View style={styles.swarmIndicator}>
+              <Activity size={10} color={SPECTRUM.mint} />
+              <Text style={styles.swarmText}>{activeAgents} NEURAL UNITS ENGAGED</Text>
+            </View>
+          )}
+        </View>
+
+        {/* ─── Hero Value ─── */}
+        <View style={styles.heroIntelligence}>
           <View style={styles.balanceContainer}>
             <Text style={styles.currencyPrefix}>$</Text>
             <CountUpNumber value={portfolio.totalUsd} />
           </View>
-          <View style={styles.indicatorRow}>
-            <View style={styles.pillIndicator}>
-              <Text style={styles.indicatorText}>
-                {portfolio.change24h >= 0 ? '+' : ''}{portfolio.change24h.toFixed(2)}%
-              </Text>
-            </View>
+          <View style={styles.trendRow}>
+            <TrendingUp size={12} color={SPECTRUM.mint} />
+            <Text style={styles.trendValue}>+{portfolio.change24h.toFixed(2)}%</Text>
+            <Text style={styles.alphaLabel}>ALPHA FLOW</Text>
           </View>
         </View>
 
-        <View style={styles.actionRow}>
-          {[
-            { label: 'Send', icon: ArrowUpRight, color: COLORS.ACCENT },
-            { label: 'Receive', icon: ArrowDownLeft, color: '#FFF' },
-            { label: 'Swap', icon: Repeat, color: '#FFF' },
-          ].map((action, i) => (
-            <Pressable
-              key={i}
-              onPress={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)}
-              style={({ pressed }) => [styles.actionBtn, pressed && styles.actionBtnPressed]}
-            >
-              <View style={[styles.actionIconCircle, i === 0 && { backgroundColor: COLORS.ACCENT }]}>
-                <action.icon size={20} color="#FFF" strokeWidth={2.5} />
+        {/* ─── Primary Command ─── */}
+        <View style={styles.executeContainer}>
+          <PressableScale
+            onPress={handleCycle}
+            disabled={cycleRunning || vaultBalance <= 0}
+            style={[styles.executeBtnPremium, vaultBalance <= 0 && { opacity: 0.5 }]}
+          >
+            <BlurView intensity={20} tint="dark" style={StyleSheet.absoluteFill} />
+            {cycleRunning ? (
+              <View style={styles.executingState}>
+                <ActivityIndicator size="small" color={SPECTRUM.violet} />
+                <Text style={styles.executingText}>SYNCHRONIZING</Text>
               </View>
-              <Text style={styles.actionText}>{action.label}</Text>
-            </Pressable>
-          ))}
+            ) : (
+              <View style={styles.idleState}>
+                <Logo size={18} color={vaultBalance > 0 ? SPECTRUM.violet : 'rgba(255,255,255,0.2)'} />
+                <Text style={styles.executeTitle}>
+                  {vaultBalance > 0 ? 'INITIATE SWARM' : 'AWAITING LIQUIDITY'}
+                </Text>
+                <ArrowRight size={14} color="rgba(255,255,255,0.2)" />
+              </View>
+            )}
+          </PressableScale>
         </View>
 
-        {/* Run Cycle button */}
-        <Pressable
-          onPress={handleCycle}
-          disabled={cycleRunning}
-          style={({ pressed }) => [
-            styles.cycleBtn,
-            cycleRunning && styles.cycleBtnRunning,
-            pressed && !cycleRunning && styles.cycleBtnPressed,
-          ]}
-        >
-          {cycleRunning ? (
-            <>
-              <ActivityIndicator size="small" color={COLORS.ACCENT} style={{ marginRight: 8 }} />
-              <Text style={styles.cycleBtnText}>Running Cycle...</Text>
-            </>
-          ) : (
-            <>
-              <Zap size={16} color={COLORS.ACCENT} style={{ marginRight: 6 }} />
-              <Text style={styles.cycleBtnText}>Run Cycle</Text>
-            </>
-          )}
-        </Pressable>
+        {/* ─── Live Thought Ticker ─── */}
+        <View style={styles.thoughtSection}>
+          <View style={styles.thoughtHeader}>
+            <Text style={styles.sectionLabel}>LATEST INTELLIGENCE</Text>
+            <Cpu size={12} color="rgba(255,255,255,0.2)" />
+          </View>
+          <View style={styles.thoughtCard}>
+            <Text style={styles.thoughtText}>{latestThought}</Text>
+          </View>
+        </View>
 
+        {/* ─── Swarm Overview ─── */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Agent Swarm</Text>
-            <LayoutGrid size={18} color={COLORS.SECONDARY_TEXT} />
+            <Text style={styles.sectionLabel}>ACTIVE COORDINATION</Text>
           </View>
-          <View style={styles.glassCard}>
-            {displayAgents.length > 0 ? (
-              displayAgents.map((agent, i) => (
-                <InsetListItem
-                  key={i}
-                  title={agent.title}
-                  desc={agent.desc}
-                  value={agent.value}
-                  status={agent.status}
-                  isLast={i === displayAgents.length - 1}
-                />
-              ))
-            ) : (
-              <>
-                <InsetListItem title="Strategist" desc="Yield Optimization" value="Active" status="POSITIVE" />
-                <InsetListItem title="Risk Guard" desc="Exposure Monitoring" value="Secure" status="POSITIVE" />
-                <InsetListItem title="Whale Watch" desc="Large Order Flow" value="Idle" status="NEUTRAL" isLast />
-              </>
-            )}
+          <View style={styles.swarmCompactCard}>
+            {agents.slice(0, 3).map((agent, i) => (
+              <View key={i} style={[styles.agentRowMinimal, i === 2 && { borderBottomWidth: 0 }]}>
+                <View style={styles.agentInfo}>
+                  <View style={[styles.statusDotSmall, { backgroundColor: agent.status !== 'IDLE' ? SPECTRUM.mint : 'rgba(255,255,255,0.1)' }]} />
+                  <Text style={styles.agentNameSmall}>{agent.name.toUpperCase()}</Text>
+                </View>
+                <Text style={styles.agentStatusSmall}>{agent.status}</Text>
+              </View>
+            ))}
           </View>
         </View>
 
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Top Assets</Text></View>
-          <View style={styles.glassCard}>
-            <InsetListItem title="Solana" desc={`${portfolio.sol.toFixed(2)} SOL`} value={solUsd} />
-            <InsetListItem title="USDC" desc={`${portfolio.usdc.toFixed(2)} USDC`} value={`$${portfolio.usdc.toFixed(0)}`} />
-            <InsetListItem title="Jupiter" desc="4,200 JUP" value="$3,820" isLast />
-          </View>
-        </View>
-      </ScrollView>
+      </RNAnimated.ScrollView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.BLACK },
-  topRimLight: { position: 'absolute', top: 0, left: 0, right: 0, height: height * 0.15, opacity: 0.6 },
-  fullScreenBloomTop: { position: 'absolute', top: -height * 0.3, left: -width * 0.4, width: width * 1.8, height: height * 0.9 },
-  fullScreenBloomBottom: { position: 'absolute', bottom: -height * 0.2, right: -width * 0.4, width: width * 1.6, height: height * 0.8 },
-  brandHeader: { alignItems: 'center', paddingBottom: 24 },
-  brandName: { color: 'rgba(255,255,255,0.3)', fontSize: 11, fontWeight: '900', letterSpacing: 8 },
-  scrollContent: { paddingHorizontal: 24 },
-  heroSection: { alignItems: 'center', marginVertical: 48 },
-  heroLabel: { color: COLORS.SECONDARY_TEXT, fontSize: 13, fontWeight: '600', letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 12 },
+  container: { flex: 1, backgroundColor: '#000' },
+  scrollContent: { paddingHorizontal: 28, paddingTop: 10 },
+
+  // Status & Alerts
+  statusSection: { alignItems: 'center', marginVertical: 20 },
+  vaultAlertCard: {
+    width: '100%',
+    padding: 20,
+    backgroundColor: 'rgba(239, 68, 68, 0.05)',
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: 'rgba(239, 68, 68, 0.15)',
+  },
+  alertHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
+  alertTitle: { color: SPECTRUM.coral, fontSize: 10, fontWeight: '900', letterSpacing: 1.5 },
+  alertDesc: { color: 'rgba(255,255,255,0.4)', fontSize: 12, fontWeight: '500', lineHeight: 18 },
+  
+  swarmIndicator: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: 'rgba(255,255,255,0.03)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 },
+  swarmText: { color: 'rgba(255,255,255,0.4)', fontSize: 9, fontWeight: '900', letterSpacing: 1.5 },
+
+  // Hero Intelligence
+  heroIntelligence: { alignItems: 'center', marginBottom: 40 },
   balanceContainer: { flexDirection: 'row', alignItems: 'flex-start' },
-  currencyPrefix: { color: 'rgba(255,255,255,0.3)', fontSize: 32, fontWeight: '600', marginTop: 8, marginRight: 4 },
-  focalValue: { color: '#FFFFFF', fontSize: 56, fontWeight: '800', letterSpacing: -2 },
-  indicatorRow: { flexDirection: 'row', alignItems: 'center', marginTop: 20, gap: 12 },
-  pillIndicator: { backgroundColor: 'rgba(48, 209, 88, 0.15)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
-  indicatorText: { color: COLORS.POSITIVE, fontSize: 13, fontWeight: '700' },
-  actionRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 16, marginBottom: 16 },
-  actionBtn: { flex: 1, backgroundColor: COLORS.GLASS, borderRadius: 24, paddingVertical: 20, alignItems: 'center', borderWidth: 1, borderColor: COLORS.BORDER, overflow: 'hidden' },
-  actionBtnPressed: { backgroundColor: COLORS.GLASS_STONG, transform: [{ scale: 0.97 }] },
-  actionIconCircle: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.05)', justifyContent: 'center', alignItems: 'center', marginBottom: 10 },
-  actionText: { color: '#FFF', fontSize: 13, fontWeight: '600' },
-  cycleBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(94, 92, 230, 0.12)', borderRadius: 20, paddingVertical: 14, marginBottom: 48, borderWidth: 1, borderColor: 'rgba(94, 92, 230, 0.25)' },
-  cycleBtnRunning: { opacity: 0.6 },
-  cycleBtnPressed: { opacity: 0.8, transform: [{ scale: 0.98 }] },
-  cycleBtnText: { color: COLORS.ACCENT, fontSize: 15, fontWeight: '700' },
+  currencyPrefix: { color: 'rgba(255,255,255,0.2)', fontSize: 32, fontWeight: '400', marginTop: 8, marginRight: 2 },
+  heroValue: { color: '#FFF', fontSize: 64, fontWeight: '800', letterSpacing: -3 },
+  trendRow: { flexDirection: 'row', alignItems: 'center', marginTop: 12, gap: 6 },
+  trendValue: { color: SPECTRUM.mint, fontSize: 13, fontWeight: '700' },
+  alphaLabel: { color: 'rgba(255,255,255,0.2)', fontSize: 10, fontWeight: '800', letterSpacing: 2 },
+
+  // Execution
+  executeContainer: { marginBottom: 40 },
+  executeBtnPremium: {
+    height: 64,
+    borderRadius: 20,
+    overflow: 'hidden',
+    justifyContent: 'center',
+    paddingHorizontal: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+  idleState: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12 },
+  executeTitle: { color: '#FFF', fontSize: 13, fontWeight: '800', letterSpacing: 2 },
+  executingState: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12 },
+  executingText: { color: SPECTRUM.violet, fontSize: 12, fontWeight: '900', letterSpacing: 2 },
+
+  // Thought Ticker
+  thoughtSection: { marginBottom: 32 },
+  thoughtHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  sectionLabel: { color: 'rgba(255,255,255,0.2)', fontSize: 10, fontWeight: '800', letterSpacing: 2 },
+  thoughtCard: {
+    backgroundColor: 'rgba(255,255,255,0.02)',
+    padding: 20,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.05)',
+  },
+  thoughtText: { color: 'rgba(255,255,255,0.7)', fontSize: 14, fontWeight: '500', lineHeight: 22, fontStyle: 'italic' },
+
+  // Swarm Compact
   section: { marginBottom: 32 },
-  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, paddingHorizontal: 4 },
-  sectionTitle: { color: '#FFF', fontSize: 20, fontWeight: '700', letterSpacing: -0.5 },
-  glassCard: { backgroundColor: COLORS.GLASS, borderRadius: 28, paddingHorizontal: 20, borderWidth: 1, borderColor: COLORS.BORDER, overflow: 'hidden' },
-  listItem: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 20, borderBottomWidth: 1, borderBottomColor: COLORS.BORDER, overflow: 'hidden' },
-  listTextContent: { flex: 1, overflow: 'hidden', marginRight: 12 },
-  itemTitle: { color: '#FFF', fontSize: 17, fontWeight: '600', marginBottom: 2 },
-  itemDesc: { color: COLORS.SECONDARY_TEXT, fontSize: 14, fontWeight: '400' },
-  listValueContent: { flexDirection: 'row', alignItems: 'center', gap: 8, minWidth: 60, justifyContent: 'flex-end' },
-  itemValue: { color: '#FFF', fontSize: 16, fontWeight: '600', textAlign: 'right' },
+  sectionHeader: { marginBottom: 12 },
+  swarmCompactCard: {
+    backgroundColor: 'rgba(255,255,255,0.02)',
+    borderRadius: 24,
+    paddingHorizontal: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.05)',
+  },
+  agentRowMinimal: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.03)' },
+  agentInfo: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  statusDotSmall: { width: 4, height: 4, borderRadius: 2 },
+  statusDot: { width: 6, height: 6, borderRadius: 3 },
+  agentNameSmall: { color: '#FFF', fontSize: 12, fontWeight: '700', letterSpacing: 0.5 },
+  agentStatusSmall: { color: 'rgba(255,255,255,0.3)', fontSize: 10, fontWeight: '800', letterSpacing: 1 },
 });
+

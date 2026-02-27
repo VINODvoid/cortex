@@ -4,10 +4,10 @@ import { Tabs } from 'expo-router';
 import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { 
-  Compass, 
+  Home, 
   Cpu, 
-  Shield, 
-  Workflow 
+  PieChart, 
+  History 
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 
@@ -15,10 +15,10 @@ const { width } = Dimensions.get('window');
 
 const COLORS = {
   BLACK: '#000000',
-  BAR_BG: 'rgba(10, 10, 12, 0.85)', 
+  BAR_BG: 'rgba(10, 10, 12, 0.95)', // 95% opaque background
   ACCENT: '#FFFFFF', 
-  INACTIVE: 'rgba(255, 255, 255, 0.25)',
-  BORDER: 'rgba(255, 255, 255, 0.08)',
+  INACTIVE: 'rgba(255, 255, 255, 0.35)',
+  BORDER: 'rgba(255, 255, 255, 0.12)',
 };
 
 const TabButton = memo(({ item, isFocused, onPress }: any) => {
@@ -53,16 +53,20 @@ const TabButton = memo(({ item, isFocused, onPress }: any) => {
     >
       <Animated.View style={[styles.tabButtonInner, { transform: [{ scale }] }]}>
         <Icon 
-          size={22} 
+          size={20} 
           color={color} 
-          strokeWidth={isFocused ? 2.5 : 1.5} 
+          strokeWidth={isFocused ? 1.5 : 1.2} 
         />
-        <Text style={[styles.tabLabel, { color }]}>{item.label}</Text>
+        <Text style={[styles.tabLabel, { color, opacity: isFocused ? 1 : 0.6 }]}>{item.label}</Text>
         
         <Animated.View 
           style={[
             styles.bead, 
-            { transform: [{ scale: beadScale }], opacity: beadScale }
+            { 
+              transform: [{ scale: beadScale }], 
+              opacity: beadScale,
+              backgroundColor: COLORS.ACCENT 
+            }
           ]} 
         />
       </Animated.View>
@@ -74,16 +78,16 @@ function CustomTabBar({ state, navigation }: any) {
   const insets = useSafeAreaInsets();
   
   const TABS = [
-    { name: 'home', label: 'Cortex', icon: Compass },
-    { name: 'agents', label: 'Swarm', icon: Cpu },
-    { name: 'portfolio', label: 'Vault', icon: Shield },
-    { name: 'activity', label: 'Logic', icon: Workflow },
+    { name: 'home', label: 'Home', icon: Home },
+    { name: 'agents', label: 'Agents', icon: Cpu },
+    { name: 'portfolio', label: 'Assets', icon: PieChart },
+    { name: 'activity', label: 'History', icon: History },
   ] as const;
 
   return (
-    <View style={[styles.outerContainer, { paddingBottom: Math.max(insets.bottom, 24) }]}>
+    <View style={[styles.outerContainer, { paddingBottom: Math.max(insets.bottom, 20) }]}>
       <View style={styles.islandContainer}>
-        <BlurView intensity={100} tint="dark" style={StyleSheet.absoluteFill} />
+        <BlurView intensity={95} tint="dark" style={StyleSheet.absoluteFill} />
         <View style={[StyleSheet.absoluteFill, { backgroundColor: COLORS.BAR_BG }]} />
         
         <View style={styles.inner}>
@@ -126,11 +130,17 @@ export default function TabLayout() {
 }
 
 const styles = StyleSheet.create({
-  outerContainer: { position: 'absolute', bottom: 0, left: 0, right: 0, paddingHorizontal: 24 },
-  islandContainer: { height: 72, borderRadius: 36, overflow: 'hidden', borderWidth: 1, borderColor: COLORS.BORDER },
-  inner: { flex: 1, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8 },
+  outerContainer: { position: 'absolute', bottom: 0, left: 0, right: 0, paddingHorizontal: 32 },
+  islandContainer: { 
+    height: 64, 
+    borderRadius: 32, 
+    overflow: 'hidden', 
+    borderWidth: 0.5, 
+    borderColor: COLORS.BORDER, 
+  },
+  inner: { flex: 1, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 4 },
   tabButton: { flex: 1, alignItems: 'center', justifyContent: 'center', height: '100%' },
-  tabButtonInner: { alignItems: 'center', justifyContent: 'center', gap: 4 },
-  tabLabel: { fontSize: 9, fontWeight: '800', letterSpacing: 1, textTransform: 'uppercase', marginTop: 2 },
-  bead: { position: 'absolute', bottom: -12, width: 4, height: 4, borderRadius: 2, backgroundColor: '#FFF' }
+  tabButtonInner: { alignItems: 'center', justifyContent: 'center', gap: 2 },
+  tabLabel: { fontSize: 8, fontWeight: '800', letterSpacing: 1.2, textTransform: 'uppercase', marginTop: 2 },
+  bead: { position: 'absolute', bottom: -10, width: 3, height: 3, borderRadius: 1.5, backgroundColor: '#FFF' }
 });
