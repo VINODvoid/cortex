@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -14,6 +14,7 @@ import {
   Image,
   KeyboardAvoidingView,
   Platform,
+  RefreshControl,
 } from 'react-native';
 import Svg, { Path, Defs, LinearGradient, Stop } from 'react-native-svg';
 import {
@@ -208,16 +209,23 @@ function VaultTxModal({
 // ─── MAIN SCREEN ─────────────────────────────────────────────────────────────
 
 export default function PortfolioScreen() {
-  const { portfolio, vault, refreshVault, withdrawFromVault } = useAppContext();
+  const { portfolio, vault, refreshVault, withdrawFromVault, refresh, solPrice } = useAppContext();
   const { connected, publicKey, balance, depositToVault } = useWallet();
 
   const [period, setPeriod] = useState('1M');
   const [depositVisible, setDepositVisible] = useState(false);
   const [withdrawVisible, setWithdrawVisible] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await refresh();
+    setRefreshing(false);
+  }, [refresh]);
 
   const vaultBalance = vault?.balance ?? 0;
-  const solUsd = portfolio.sol * 170;
-  const vaultUsd = vaultBalance * 170;
+  const solUsd = portfolio.sol * solPrice;
+  const vaultUsd = vaultBalance * solPrice;
 
   async function handleDeposit(amountSol: number): Promise<string> {
     let address = vault?.address;
@@ -243,18 +251,34 @@ export default function PortfolioScreen() {
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={[styles.scrollContent, { paddingBottom: 160 }]}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={SPECTRUM.mint}
+            colors={[SPECTRUM.mint]}
+            progressBackgroundColor="#000"
+          />
+        }
       >
         {/* ─── Performance Card ─── */}
         <Animated.View entering={FadeInDown.duration(800).delay(100)} style={styles.section}>
           <View style={styles.cardContainer}>
             <Text style={styles.overline}>PORTFOLIO PERFORMANCE</Text>
             
-            <View style={styles.priceContainer}>
-              <Text style={styles.heroNum}>${portfolio.totalUsd.toLocaleString()}</Text>
-              <View style={styles.alphaBadge}>
-                <TrendingUp size={10} color={SPECTRUM.mint} />
-                <Text style={styles.alphaText}>+{portfolio.change24h.toFixed(2)}%</Text>
+            <Text style={styles.heroNum}>
+              ${(portfolio.totalUsd + vaultUsd).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </Text>
+            <View style={styles.metaRow}>
+              <View style={[styles.alphaBadge, { backgroundColor: portfolio.change24h >= 0 ? 'rgba(52,211,153,0.1)' : 'rgba(248,113,113,0.1)' }]}>
+                <TrendingUp size={10} color={portfolio.change24h >= 0 ? SPECTRUM.mint : SPECTRUM.coral} />
+                <Text style={[styles.alphaText, { color: portfolio.change24h >= 0 ? SPECTRUM.mint : SPECTRUM.coral }]}>
+                  {portfolio.change24h >= 0 ? '+' : ''}{portfolio.change24h.toFixed(2)}%
+                </Text>
               </View>
+              {solPrice > 0 && (
+                <Text style={styles.solPriceLabel}>SOL ${solPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</Text>
+              )}
             </View>
 
             <View style={styles.chartArea}>
@@ -330,7 +354,7 @@ export default function PortfolioScreen() {
           <View style={styles.assetList}>
             {[
               { name: 'SOLANA', symbol: 'SOL', amount: portfolio.sol, value: solUsd, icon: require('../../assets/solana.png') },
-              { name: 'USD COIN', symbol: 'USDC', amount: 0, value: 0, icon: require('../../assets/usd-coin.png') }
+              { name: 'USD COIN', symbol: 'USDC', amount: portfolio.usdc, value: portfolio.usdc, icon: require('../../assets/usd-coin.png') }
             ].map((asset, i, arr) => (
               <View key={i} style={[styles.assetItem, i === arr.length - 1 && { borderBottomWidth: 0 }]}>
                 <View style={styles.assetLeading}>
@@ -373,9 +397,10 @@ const styles = StyleSheet.create({
   heroNum: { ...TYPOGRAPHY.heroNum, color: INK.primary },
   
   // Performance Section
-  priceContainer: { flexDirection: 'row', alignItems: 'baseline', gap: 12, marginBottom: 24 },
-  alphaBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(52, 211, 153, 0.1)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: RADIUS.xs },
-  alphaText: { color: SPECTRUM.mint, fontSize: 12, fontWeight: '700' },
+  metaRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 8, marginBottom: 24 },
+  alphaBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: RADIUS.xs },
+  alphaText: { fontSize: 12, fontWeight: '700' as const },
+  solPriceLabel: { color: INK.tertiary, fontSize: 11, fontWeight: '600' as const },
   
   chartArea: { marginTop: 0 },
   periodPicker: { flexDirection: 'row', backgroundColor: GLASS.g1, borderRadius: RADIUS.sm, padding: 3, gap: 2, marginBottom: 20, alignSelf: 'flex-start' },

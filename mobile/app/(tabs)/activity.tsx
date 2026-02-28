@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   Dimensions,
   Easing,
   Linking,
+  RefreshControl,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -89,7 +90,14 @@ const ActivityRow = ({ item, isLast }: { item: ActivityItemType; isLast: boolean
 
 export default function ActivityScreen() {
   const insets = useSafeAreaInsets();
-  const { activity } = useAppContext();
+  const { activity, refresh } = useAppContext();
+  const [refreshing, setRefreshing] = useState(false);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await refresh();
+    setRefreshing(false);
+  }, [refresh]);
   
   const contentFade = useRef(new Animated.Value(0)).current;
 
@@ -107,6 +115,15 @@ export default function ActivityScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={[styles.scrollContent, { paddingBottom: 160 }]}
         style={{ opacity: contentFade }}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={SPECTRUM.mint}
+            colors={[SPECTRUM.mint]}
+            progressBackgroundColor="#000"
+          />
+        }
       >
         {/* ─── Success Hero ─── */}
         <View style={styles.heroSection}>

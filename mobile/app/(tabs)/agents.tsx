@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   Animated,
   Dimensions,
   Easing,
+  RefreshControl,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -62,13 +63,20 @@ const PressableScale = ({ children, onPress, style }: any) => {
 
 export default function AgentsScreen() {
   const insets = useSafeAreaInsets();
-  const { agents, cycleRunning } = useAppContext();
-  
+  const { agents, cycleRunning, refresh } = useAppContext();
+  const [refreshing, setRefreshing] = useState(false);
+
   const contentFade = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     Animated.timing(contentFade, { toValue: 1, duration: 1000, useNativeDriver: true }).start();
   }, []);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await refresh();
+    setRefreshing(false);
+  }, [refresh]);
 
   const orchestrator = agents[0] || { name: 'ORCHESTRATOR', status: 'IDLE', lastAction: 'SCANNING...' };
   const specializedUnits = agents.slice(1);
@@ -82,6 +90,15 @@ export default function AgentsScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={[styles.scrollContent, { paddingBottom: 160 }]}
         style={{ opacity: contentFade }}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={SPECTRUM.mint}
+            colors={[SPECTRUM.mint]}
+            progressBackgroundColor="#000"
+          />
+        }
       >
         {/* ─── Orchestrator Hero ─── */}
         <View style={styles.heroSection}>

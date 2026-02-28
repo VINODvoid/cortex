@@ -68,6 +68,8 @@ interface AppContextValue {
   triggerCycle: () => Promise<void>;
   refreshVault: () => Promise<void>;
   withdrawFromVault: (walletAddress: string, amountSol: number) => Promise<string>;
+  refresh: () => Promise<void>;
+  solPrice: number;
 }
 
 const defaultPortfolio: Portfolio = {
@@ -89,6 +91,8 @@ const AppContext = createContext<AppContextValue>({
   triggerCycle: async () => {},
   refreshVault: async () => {},
   withdrawFromVault: async () => "",
+  refresh: async () => {},
+  solPrice: 0,
 });
 
 // ─── Provider ─────────────────────────────────────────────────────────────────
@@ -101,7 +105,21 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [cycleRunning, setCycleRunning] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
   const [vault, setVault] = useState<VaultInfo | null>(null);
+  const [solPrice, setSolPrice] = useState(0);
   const wsRef = useRef<WsManager | null>(null);
+
+  const fetchSolPrice = useCallback(async () => {
+    try {
+      const res = await fetch(
+        'https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd',
+      );
+      const data = await res.json();
+      const price = data?.solana?.usd;
+      if (typeof price === 'number') setSolPrice(price);
+    } catch {
+      // non-fatal
+    }
+  }, []);
 
   const refreshVault = useCallback(async () => {
     try {
@@ -139,8 +157,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       })
       .catch(() => {});
 
-    // Fetch vault info
+    // Fetch vault info and SOL price on mount
     refreshVault();
+    fetchSolPrice();
+
+    // Poll SOL price every 60s
+    const pricePoll = setInterval(fetchSolPrice, 60000);
 
     // WebSocket
     const ws = new WsManager(WS_URL);
@@ -151,6 +173,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setPortfolio(data.portfolio);
       setAgents(data.agents);
       setActivity(data.activity);
+    });
+
+    ws.on("agents_update", (data: AgentStatus[]) => {
+      setAgents(data);
     });
 
     ws.on("cycle_start", () => {
@@ -194,8 +220,25 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return () => {
       ws.disconnect();
       clearInterval(vaultPoll);
+      clearInterval(pricePoll);
     };
-  }, [refreshVault]);
+  }, [refreshVault, fetchSolPrice]);
+
+  const refresh = useCallback(async () => {
+    try {
+      const [p, a, act] = await Promise.all([
+        api.getPortfolio() as Promise<Portfolio>,
+        api.getAgents() as Promise<AgentStatus[]>,
+        api.getActivity() as Promise<ActivityItem[]>,
+      ]);
+      setPortfolio(p);
+      setAgents(a);
+      setActivity(act);
+    } catch {
+      // non-fatal
+    }
+    await Promise.all([refreshVault(), fetchSolPrice()]);
+  }, [refreshVault, fetchSolPrice]);
 
   const triggerCycle = useCallback(async () => {
     if (cycleRunning) return;
@@ -215,6 +258,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         triggerCycle,
         refreshVault,
         withdrawFromVault,
+        refresh,
+        solPrice,
       }}
     >
       {children}

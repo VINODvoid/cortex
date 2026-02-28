@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -14,6 +14,7 @@ import {
   TextInput,
   KeyboardAvoidingView,
   Platform,
+  RefreshControl,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -112,7 +113,7 @@ const CountUpNumber = ({ value }: { value: number }) => {
 
 // ─── SWAP MODAL ────────────────────────────────────────────────────────────
 
-function SwapModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+function SwapModal({ visible, onClose, solPrice }: { visible: boolean; onClose: () => void; solPrice: number }) {
   const [amount, setAmount] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -186,7 +187,7 @@ function SwapModal({ visible, onClose }: { visible: boolean; onClose: () => void
                   </View>
                 </View>
                 <Text style={[swapStyles.amountInput, { color: INK.secondary }]}>
-                  {amount ? (parseFloat(amount) * 170).toFixed(2) : '0.00'}
+                  {amount ? (parseFloat(amount) * solPrice).toFixed(2) : '0.00'}
                 </Text>
               </View>
             </View>
@@ -194,7 +195,9 @@ function SwapModal({ visible, onClose }: { visible: boolean; onClose: () => void
             <View style={swapStyles.footer}>
               <View style={swapStyles.metaRow}>
                 <Text style={swapStyles.metaLabel}>RATE</Text>
-                <Text style={swapStyles.metaValue}>1 SOL ≈ 170.42 USDC</Text>
+                <Text style={swapStyles.metaValue}>
+                  {solPrice > 0 ? `1 SOL ≈ ${solPrice.toFixed(2)} USDC` : 'Loading price...'}
+                </Text>
               </View>
               <View style={swapStyles.metaRow}>
                 <Text style={swapStyles.metaLabel}>SLIPPAGE</Text>
@@ -220,7 +223,14 @@ function SwapModal({ visible, onClose }: { visible: boolean; onClose: () => void
 
 export default function Dashboard() {
   const insets = useSafeAreaInsets();
-  const { portfolio, agents, cycleRunning, triggerCycle, vault } = useAppContext();
+  const { portfolio, agents, cycleRunning, triggerCycle, vault, refresh, solPrice } = useAppContext();
+  const [refreshing, setRefreshing] = useState(false);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await refresh();
+    setRefreshing(false);
+  }, [refresh]);
   const { balance, connected } = useWallet();
   
   const [swapVisible, setSwapVisible] = useState(false);
@@ -241,8 +251,9 @@ export default function Dashboard() {
   };
 
   const activeAgents = agents.filter(a => a.status !== 'IDLE').length;
-  const latestThought = agents.find(a => a.status === 'ACTIVE' || a.status === 'THINKING')?.lastAction 
+  const latestThought = agents.find(a => a.status === 'ACTIVE' || a.status === 'THINKING')?.lastAction
     || "Monitoring global liquidity clusters...";
+  const totalManagedUsd = portfolio.totalUsd + vaultBalance * solPrice;
 
   return (
     <View style={styles.container}>
@@ -252,6 +263,15 @@ export default function Dashboard() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={[styles.scrollContent, { paddingBottom: 160 }]}
         style={{ opacity: contentFade }}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={SPECTRUM.mint}
+            colors={[SPECTRUM.mint]}
+            progressBackgroundColor="#000"
+          />
+        }
       >
         {/* ─── Vault Awareness Section ─── */}
         <View style={styles.statusSection}>
@@ -275,7 +295,7 @@ export default function Dashboard() {
         <View style={styles.heroIntelligence}>
           <View style={styles.balanceContainer}>
             <Text style={styles.currencyPrefix}>$</Text>
-            <CountUpNumber value={portfolio.totalUsd} />
+            <CountUpNumber value={totalManagedUsd} />
           </View>
           <View style={styles.trendRow}>
             <TrendingUp size={12} color={SPECTRUM.mint} />
@@ -361,7 +381,7 @@ export default function Dashboard() {
 
       </RNAnimated.ScrollView>
 
-      <SwapModal visible={swapVisible} onClose={() => setSwapVisible(false)} />
+      <SwapModal visible={swapVisible} onClose={() => setSwapVisible(false)} solPrice={solPrice} />
     </View>
   );
 }
