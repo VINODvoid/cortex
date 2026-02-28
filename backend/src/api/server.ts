@@ -79,6 +79,7 @@ export function createServer(port = 3001) {
 
     // Mark all agents as THINKING
     state.agents = state.agents.map((a) => ({ ...a, status: "THINKING" as const }));
+    broadcast(state, { event: "agents_update", data: state.agents });
 
     await refreshPortfolio();
 
@@ -122,6 +123,7 @@ export function createServer(port = 3001) {
             : a
         );
 
+        broadcast(state, { event: "agents_update", data: state.agents });
         broadcast(state, { event: "proposal", data: item });
         return { proposal, agentIdx: i, proposalId };
       })
@@ -134,9 +136,10 @@ export function createServer(port = 3001) {
       )
       .map((r) => r.value);
 
-    // Vote phase
+    // Vote phase — find the consensus winner (most YES votes)
     let successful = 0;
     let failed = 0;
+    let winner: { proposal: any; agentIdx: number; yesVotes: number } | null = null;
 
     for (const { proposal, agentIdx, proposalId } of proposals) {
       const voteResults = await Promise.allSettled(
@@ -161,7 +164,7 @@ export function createServer(port = 3001) {
       const status = passed ? ("SUCCESS" as const) : ("FAILED" as const);
 
       // Update the original proposal status in state
-      state.activity = state.activity.map(item => 
+      state.activity = state.activity.map(item =>
         item.id === proposalId ? { ...item, status } : item
       );
 
@@ -183,32 +186,41 @@ export function createServer(port = 3001) {
 
       if (passed) {
         successful++;
-        // Fire-and-forget execution — broadcast result when done
-        executor.executeProposal(proposal).then((execResult) => {
-          const execItem: ActivityItem = {
-            id: `${Date.now()}-e${agentIdx}`,
-            type: "EXECUTION",
-            agent: proposal.agent,
-            action: execResult.message,
-            target: execResult.transaction?.signature
-              ? `tx:${execResult.transaction.signature}`
-              : proposal.target,
-            status: execResult.success ? "SUCCESS" : "FAILED",
-            timestamp: new Date().toISOString(),
-            txSignature: execResult.transaction?.signature,
-          };
-          addActivity(state, execItem);
-          broadcast(state, { event: "execution_complete", data: execItem });
-          refreshPortfolio();
-        }).catch(() => {});
+        // Track the proposal with the most YES votes — execute only the winner
+        if (!winner || yes > winner.yesVotes) {
+          winner = { proposal, agentIdx, yesVotes: yes };
+        }
       } else {
         failed++;
       }
     }
 
+    // Execute only the consensus winner — one Jupiter call per cycle, no rate limit hammering
+    if (winner) {
+      const { proposal, agentIdx } = winner;
+      executor.executeProposal(proposal).then((execResult) => {
+        const execItem: ActivityItem = {
+          id: `${Date.now()}-e${agentIdx}`,
+          type: "EXECUTION",
+          agent: proposal.agent,
+          action: execResult.message,
+          target: execResult.transaction?.signature
+            ? `tx:${execResult.transaction.signature}`
+            : proposal.target,
+          status: execResult.success ? "SUCCESS" : "FAILED",
+          timestamp: new Date().toISOString(),
+          txSignature: execResult.transaction?.signature,
+        };
+        addActivity(state, execItem);
+        broadcast(state, { event: "execution_complete", data: execItem });
+        refreshPortfolio();
+      }).catch(() => {});
+    }
+
     state.cycleRunning = false;
     state.lastCycleAt = new Date();
     state.agents = state.agents.map((a) => ({ ...a, status: "IDLE" as const }));
+    broadcast(state, { event: "agents_update", data: state.agents });
 
     broadcast(state, {
       event: "cycle_complete",
@@ -420,10 +432,6 @@ export function createServer(port = 3001) {
       },
     },
   });
-
-  // Auto-run: first cycle after 2s, then every 5 minutes
-  setTimeout(runCycle, 2000);
-  setInterval(runCycle, 5 * 60 * 1000);
 
   return server;
 }

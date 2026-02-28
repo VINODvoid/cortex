@@ -1,4 +1,4 @@
-import { Platform, NativeModules } from "react-native";
+import { Platform } from "react-native";
 
 // Defensive check for native modules (especially for Web or incomplete native environments)
 // Also check for the specific native module that causes the warning
@@ -10,12 +10,6 @@ let Notifications: any = null;
 
 if (isNotificationSupported) {
   try {
-    // Attempt to see if the native module exists before requiring
-    // In some environments, expo-notifications is linked but the native parts are missing
-    const hasNativeModule = !!NativeModules.ExpoPushTokenManager || !!NativeModules.RNNotifications;
-    
-    // We still try to require it but we'll be more silent if it fails
-    // because we know this can happen in some dev environments
     Notifications = require("expo-notifications");
     
     if (Notifications && Notifications.setNotificationHandler) {
