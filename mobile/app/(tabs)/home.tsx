@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
+import { useRouter } from 'expo-router';
 import {
   View,
   Text,
@@ -15,6 +16,8 @@ import {
   KeyboardAvoidingView,
   Platform,
   RefreshControl,
+  Alert,
+  Share,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -42,6 +45,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useAppContext } from '../../context/AppContext';
 import { useWallet } from '../../context/WalletContext';
+import { api } from '../../services/api';
 import { BrandHeader } from '../../components/BrandHeader';
 import { INK, VOID, SPECTRUM, RADIUS, SPACE, TYPOGRAPHY, GLASS, BORDER } from '../../constants/theme';
 
@@ -116,25 +120,42 @@ const CountUpNumber = ({ value }: { value: number }) => {
 function SwapModal({ visible, onClose, solPrice }: { visible: boolean; onClose: () => void; solPrice: number }) {
   const [amount, setAmount] = useState('');
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleSwap = () => {
+  function handleClose() {
+    setAmount('');
+    setError(null);
+    onClose();
+  }
+
+  async function handleSwap() {
+    const parsed = parseFloat(amount);
+    if (!parsed || parsed <= 0) { setError('Enter a valid amount'); return; }
+    setError(null);
     setLoading(true);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    setTimeout(() => {
+    try {
+      const result = await api.executeVaultSwap('SOL_TO_USDC', parsed);
+      if (result.error) throw new Error(result.error);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Alert.alert('Swap Executed', `Sold ${parsed} SOL → USDC\nTx: ${result.signature?.slice(0, 16)}...`, [
+        { text: 'OK', onPress: handleClose },
+      ]);
+    } catch (err: any) {
+      setError(err?.message ?? 'Swap failed');
+    } finally {
       setLoading(false);
-      onClose();
-    }, 2000);
-  };
+    }
+  }
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={handleClose}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
-        <Pressable style={swapStyles.overlay} onPress={onClose}>
+        <Pressable style={swapStyles.overlay} onPress={handleClose}>
           <BlurView intensity={30} tint="dark" style={StyleSheet.absoluteFill} />
           <Pressable style={swapStyles.sheet} onPress={() => {}}>
             <View style={swapStyles.header}>
               <Text style={swapStyles.title}>Neural Swap</Text>
-              <Pressable onPress={onClose} style={swapStyles.closeBtn}>
+              <Pressable onPress={handleClose} style={swapStyles.closeBtn}>
                 <Text style={swapStyles.closeText}>CANCEL</Text>
               </Pressable>
             </View>
@@ -201,8 +222,10 @@ function SwapModal({ visible, onClose, solPrice }: { visible: boolean; onClose: 
               </View>
               <View style={swapStyles.metaRow}>
                 <Text style={swapStyles.metaLabel}>SLIPPAGE</Text>
-                <Text style={swapStyles.metaValue}>0.5%</Text>
+                <Text style={swapStyles.metaValue}>1%</Text>
               </View>
+
+              {error ? <Text style={{ color: '#f87171', fontSize: 12, marginBottom: 12 }}>{error}</Text> : null}
 
               <PressableScale style={swapStyles.swapBtn} onPress={handleSwap} disabled={loading || !amount}>
                 {loading ? (
@@ -223,6 +246,7 @@ function SwapModal({ visible, onClose, solPrice }: { visible: boolean; onClose: 
 
 export default function Dashboard() {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const { portfolio, agents, cycleRunning, triggerCycle, vault, refresh, solPrice } = useAppContext();
   const [refreshing, setRefreshing] = useState(false);
 
@@ -299,14 +323,17 @@ export default function Dashboard() {
           </View>
           <View style={styles.trendRow}>
             <TrendingUp size={12} color={SPECTRUM.mint} />
-            <Text style={styles.trendValue}>+{portfolio.change24h.toFixed(2)}%</Text>
+            <Text style={styles.trendValue}>{portfolio.change24h >= 0 ? '+' : ''}{portfolio.change24h.toFixed(2)}%</Text>
             <Text style={styles.alphaLabel}>ALPHA FLOW</Text>
           </View>
         </View>
 
         {/* ─── Command Bar ─── */}
         <View style={styles.commandRow}>
-          <PressableScale style={styles.commandPill} onPress={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)}>
+          <PressableScale style={styles.commandPill} onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            router.push('/(tabs)/portfolio');
+          }}>
             <ArrowUpRight size={14} color={INK.primary} strokeWidth={2.5} />
             <Text style={styles.commandText}>SEND</Text>
           </PressableScale>
@@ -319,7 +346,15 @@ export default function Dashboard() {
             <Text style={styles.commandText}>SWAP</Text>
           </PressableScale>
           <View style={styles.commandDivider} />
-          <PressableScale style={styles.commandPill} onPress={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)}>
+          <PressableScale style={styles.commandPill} onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            const addr = vault?.address ?? portfolio.walletAddress;
+            if (addr) {
+              Share.share({ message: addr, title: 'CORTEX Vault Address' });
+            } else {
+              Alert.alert('Not Available', 'Vault address not loaded yet.');
+            }
+          }}>
             <ArrowDownLeft size={14} color={INK.primary} strokeWidth={2.5} />
             <Text style={styles.commandText}>RECEIVE</Text>
           </PressableScale>

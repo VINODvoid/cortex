@@ -156,7 +156,7 @@ function SettingsRow({
 export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { isConnected, cycleRunning, agents, portfolio } = useAppContext();
+  const { isConnected, cycleRunning, agents, portfolio, vault } = useAppContext();
   const { connected, connecting, publicKey, walletLabel, connect, disconnect } = useWallet();
 
   const [notifications, setNotifications] = useState(true);
@@ -175,7 +175,7 @@ export default function SettingsScreen() {
   function openVaultExplorer() {
     if (!portfolio.walletAddress) return;
     Linking.openURL(
-      `https://explorer.solana.com/address/${portfolio.walletAddress}?cluster=devnet`
+      `https://explorer.solana.com/address/${portfolio.walletAddress}?cluster=${vault?.network ?? 'testnet'}`
     ).catch(() => {});
   }
 
@@ -225,18 +225,22 @@ export default function SettingsScreen() {
           />
           <View style={styles.healthGrid}>
             <View style={styles.healthItem}>
-              <Text style={styles.healthLabel}>SYSTEM UPTIME</Text>
-              <Text style={styles.healthValue}>99.98%</Text>
+              <Text style={styles.healthLabel}>WS STATUS</Text>
+              <Text style={[styles.healthValue, { color: isConnected ? SPECTRUM.mint : SPECTRUM.coral }]}>
+                {isConnected ? 'SYNCED' : 'OFFLINE'}
+              </Text>
             </View>
             <View style={styles.healthDivider} />
             <View style={styles.healthItem}>
-              <Text style={styles.healthLabel}>NEURAL LOAD</Text>
-              <Text style={[styles.healthValue, { color: SPECTRUM.mint }]}>OPTIMAL</Text>
+              <Text style={styles.healthLabel}>CYCLE STATE</Text>
+              <Text style={[styles.healthValue, { color: cycleRunning ? SPECTRUM.gold : SPECTRUM.mint }]}>
+                {cycleRunning ? 'RUNNING' : 'READY'}
+              </Text>
             </View>
             <View style={styles.healthDivider} />
             <View style={styles.healthItem}>
-              <Text style={styles.healthLabel}>API LATENCY</Text>
-              <Text style={styles.healthValue}>24ms</Text>
+              <Text style={styles.healthLabel}>NEURONS</Text>
+              <Text style={styles.healthValue}>{activeNeurons} / {agents.length}</Text>
             </View>
           </View>
           <View style={styles.healthFooter}>
@@ -324,7 +328,7 @@ export default function SettingsScreen() {
           </Pressable>
 
           {/* Network */}
-          <SettingsRow icon={Wifi} label="NETWORK" value="Solana Devnet" isLast />
+          <SettingsRow icon={Wifi} label="NETWORK" value={vault?.network ? vault.network.toUpperCase() : 'TESTNET'} isLast />
         </Section>
 
         {/* ─── INTELLIGENCE ────────────────────────────────────────────────── */}
@@ -364,8 +368,9 @@ export default function SettingsScreen() {
         {/* ─── SESSION ACTIONS ─────────────────────────────────────────────── */}
         <View style={styles.actionGroup}>
           <Pressable
-            onPress={() => {
+            onPress={async () => {
               Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+              await disconnect();
               router.replace('/');
             }}
             style={({ pressed }) => [styles.actionBtn, pressed && styles.btnPressed]}

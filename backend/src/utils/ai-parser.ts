@@ -70,7 +70,7 @@ export function parseAgentResponse(text: string): AgentResponseShape {
   if (typeof obj["reasoning"] !== "string") {
     throw new Error("Missing 'reasoning' field");
   }
-  if (typeof obj["confidence"] !== "number") {
+  if (typeof obj["confidence"] !== "number" || isNaN(obj["confidence"] as number)) {
     throw new Error("Missing 'confidence' field (must be a number)");
   }
 

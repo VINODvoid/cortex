@@ -10,7 +10,8 @@ export class WhaleNeuron extends Agent {
   override async think(context: SystemContext): Promise<Proposal> {
     this.setContext(context);
     try {
-      const topPool = context.pools?.sort((a, b) => b.tvl - a.tvl)[0];
+      const sortedPools = [...(context.pools ?? [])].sort((a, b) => b.tvl - a.tvl);
+      const topPool = sortedPools[0];
 
       const prompt = `You are WhaleWatcher, a large-wallet activity monitor.
 Your role: Track institutional and whale movements via TVL signals.
@@ -20,7 +21,7 @@ SOL: ${context.portfolio.sol}
 USDC: ${context.portfolio.usdc}
 
 Available Pools (sorted by TVL):
-${context.pools?.sort((a, b) => b.tvl - a.tvl).map((p) => `- ${p.name}: ${p.apy.toFixed(2)}% APY, TVL: $${p.tvl.toLocaleString()}`).join("\n") ?? "None"}
+${sortedPools.map((p) => `- ${p.name}: ${p.apy.toFixed(2)}% APY, TVL: $${p.tvl.toLocaleString()}`).join("\n") || "None"}
 
 Whale Signals (using TVL as proxy for institutional activity):
 - TVL > $100M = Institutional confidence (whale accumulation)

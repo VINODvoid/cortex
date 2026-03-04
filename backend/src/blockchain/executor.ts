@@ -29,6 +29,21 @@ export class TransactionExecutor {
     private poolDataService: PoolDataService,
   ) {}
 
+  private isMainnet(): boolean {
+    return this.solanaService.isMainnet();
+  }
+
+  /** On non-mainnet networks Jupiter doesn't work — return a simulated success. */
+  private simulateSwap(inSol: number, outUsdc: number, direction: "SOL_USDC" | "USDC_SOL"): SwapResult {
+    const sig = `sim_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    return {
+      signature: sig,
+      inputAmount: direction === "SOL_USDC" ? this.jupiterService.solToLamports(inSol) : this.jupiterService.usdcToBaseUnits(outUsdc),
+      outputAmount: direction === "SOL_USDC" ? this.jupiterService.usdcToBaseUnits(outUsdc) : this.jupiterService.solToLamports(inSol),
+      explorer: `https://solscan.io/tx/${sig}?cluster=testnet`,
+    };
+  }
+
   /**
    * Execute a proposal that passed voting
    */
@@ -59,6 +74,11 @@ export class TransactionExecutor {
 
       if (actionLower.includes("exit") || actionLower.includes("withdraw")) {
         return await this.executeExit(proposal);
+      }
+
+      // sell_trend must be checked before the generic "trend" catch-all
+      if (actionLower.includes("sell")) {
+        return await this.executeProvideLiquidity(proposal);
       }
 
       if (actionLower.includes("buy") || actionLower.includes("trend")) {
@@ -156,8 +176,10 @@ export class TransactionExecutor {
     );
     console.log(`   Estimated output: ${estimatedOutput.toFixed(2)} USDC`);
 
-    // Execute swap
-    const result = await this.jupiterService.executeSwap(quote, wallet);
+    // Execute swap (simulate on non-mainnet — Jupiter only works on mainnet-beta)
+    const result = this.isMainnet()
+      ? await this.jupiterService.executeSwap(quote, wallet)
+      : this.simulateSwap(swapAmount, estimatedOutput, "SOL_USDC");
 
     return {
       success: true,
@@ -213,14 +235,14 @@ export class TransactionExecutor {
       // Excess SOL → sell to USDC
       const excessSol = (solValueUsd - targetUsd) / price;
       const swapLamports = this.jupiterService.solToLamports(excessSol);
+      const estimatedUsdc = excessSol * price;
       console.log(`   Rebalance: swapping ${excessSol.toFixed(4)} SOL → USDC`);
-      const quote = await this.jupiterService.getSwapQuote(
-        TOKEN_MINTS.SOL,
-        TOKEN_MINTS.USDC,
-        swapLamports,
-        100,
-      );
-      const result = await this.jupiterService.executeSwap(quote, wallet);
+      const result = this.isMainnet()
+        ? await this.jupiterService.executeSwap(
+            await this.jupiterService.getSwapQuote(TOKEN_MINTS.SOL, TOKEN_MINTS.USDC, swapLamports, 100),
+            wallet,
+          )
+        : this.simulateSwap(excessSol, estimatedUsdc, "SOL_USDC");
       const outUsdc = this.jupiterService.baseUnitsToUsdc(result.outputAmount);
       return {
         success: true,
@@ -238,15 +260,18 @@ export class TransactionExecutor {
     } else {
       // Excess USDC → buy SOL
       const excessUsdc = usdcBalance - targetUsd;
+      if (excessUsdc <= 0) {
+        return { success: true, action: proposal.action, agent: proposal.agent, message: "Portfolio balanced — no rebalance needed" };
+      }
       const swapBaseUnits = this.jupiterService.usdcToBaseUnits(excessUsdc);
+      const estimatedSol = excessUsdc / price;
       console.log(`   Rebalance: swapping ${excessUsdc.toFixed(2)} USDC → SOL`);
-      const quote = await this.jupiterService.getSwapQuote(
-        TOKEN_MINTS.USDC,
-        TOKEN_MINTS.SOL,
-        swapBaseUnits,
-        100,
-      );
-      const result = await this.jupiterService.executeSwap(quote, wallet);
+      const result = this.isMainnet()
+        ? await this.jupiterService.executeSwap(
+            await this.jupiterService.getSwapQuote(TOKEN_MINTS.USDC, TOKEN_MINTS.SOL, swapBaseUnits, 100),
+            wallet,
+          )
+        : this.simulateSwap(estimatedSol, excessUsdc, "USDC_SOL");
       const outSol = this.jupiterService.lamportsToSol(result.outputAmount);
       return {
         success: true,
@@ -284,14 +309,13 @@ export class TransactionExecutor {
     const amountBaseUnits = this.jupiterService.usdcToBaseUnits(usdcBalance);
     console.log(`   Swapping ${usdcBalance.toFixed(2)} USDC → SOL`);
 
-    const quote = await this.jupiterService.getSwapQuote(
-      TOKEN_MINTS.USDC,
-      TOKEN_MINTS.SOL,
-      amountBaseUnits,
-      100,
-    );
-
-    const result = await this.jupiterService.executeSwap(quote, wallet);
+    const estimatedSol = usdcBalance / 170;
+    const result = this.isMainnet()
+      ? await this.jupiterService.executeSwap(
+          await this.jupiterService.getSwapQuote(TOKEN_MINTS.USDC, TOKEN_MINTS.SOL, amountBaseUnits, 100),
+          wallet,
+        )
+      : this.simulateSwap(estimatedSol, usdcBalance, "USDC_SOL");
     const outSol = this.jupiterService.lamportsToSol(result.outputAmount);
 
     return {
@@ -329,13 +353,13 @@ export class TransactionExecutor {
     const swapBaseUnits = this.jupiterService.usdcToBaseUnits(buyAmount);
     console.log(`   Buy: swapping ${buyAmount.toFixed(2)} USDC → SOL`);
 
-    const quote = await this.jupiterService.getSwapQuote(
-      TOKEN_MINTS.USDC,
-      TOKEN_MINTS.SOL,
-      swapBaseUnits,
-      100,
-    );
-    const result = await this.jupiterService.executeSwap(quote, wallet);
+    const estimatedSol = buyAmount / 170;
+    const result = this.isMainnet()
+      ? await this.jupiterService.executeSwap(
+          await this.jupiterService.getSwapQuote(TOKEN_MINTS.USDC, TOKEN_MINTS.SOL, swapBaseUnits, 100),
+          wallet,
+        )
+      : this.simulateSwap(estimatedSol, buyAmount, "USDC_SOL");
     const outSol = this.jupiterService.lamportsToSol(result.outputAmount);
 
     return {

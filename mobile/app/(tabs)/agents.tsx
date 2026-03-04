@@ -9,6 +9,7 @@ import {
   Dimensions,
   Easing,
   RefreshControl,
+  Alert,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -27,8 +28,31 @@ import {
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useAppContext } from '../../context/AppContext';
+import type { ActivityItem } from '../../context/AppContext';
 import { BrandHeader } from '../../components/BrandHeader';
 import { INK, VOID, SPECTRUM, BORDER } from '../../constants/theme';
+
+// ─── HELPERS ─────────────────────────────────────────────────────────────────
+
+function parseVoteCounts(action: string): { yes: number; no: number; abstain: number } | null {
+  const m = action.match(/(\d+)Y\s*\/\s*(\d+)N\s*\/\s*(\d+)A/);
+  if (!m) return null;
+  return { yes: Number(m[1]), no: Number(m[2]), abstain: Number(m[3]) };
+}
+
+function calcConsensus(activity: ActivityItem[]): { yesPct: number; noPct: number; abstainPct: number } | null {
+  let yes = 0, no = 0, abstain = 0;
+  for (const item of activity) {
+    if (item.type !== 'VOTE') continue;
+    const r = parseVoteCounts(item.action);
+    if (r) { yes += r.yes; no += r.no; abstain += r.abstain; }
+  }
+  const total = yes + no + abstain;
+  if (total === 0) return null;
+  const yesPct = Math.round((yes / total) * 100);
+  const noPct = Math.round((no / total) * 100);
+  return { yesPct, noPct, abstainPct: 100 - yesPct - noPct };
+}
 
 const { width, height } = Dimensions.get('window');
 
@@ -63,7 +87,7 @@ const PressableScale = ({ children, onPress, style }: any) => {
 
 export default function AgentsScreen() {
   const insets = useSafeAreaInsets();
-  const { agents, cycleRunning, refresh } = useAppContext();
+  const { agents, cycleRunning, refresh, activity } = useAppContext();
   const [refreshing, setRefreshing] = useState(false);
 
   const contentFade = useRef(new Animated.Value(0)).current;
@@ -81,6 +105,7 @@ export default function AgentsScreen() {
   const orchestrator = agents[0] || { name: 'ORCHESTRATOR', status: 'IDLE', lastAction: 'SCANNING...' };
   const specializedUnits = agents.slice(1);
   const activeCount = agents.filter((a) => a.status !== 'IDLE').length;
+  const consensus = calcConsensus(activity);
 
   return (
     <View style={styles.container}>
@@ -121,9 +146,9 @@ export default function AgentsScreen() {
             <Text style={styles.activeCountLabel}>{activeCount} UNITS ACTIVE</Text>
           </View>
           <View style={styles.consensusBarContainer}>
-            <View style={[styles.consensusFill, { width: '70%', backgroundColor: SPECTRUM.mint }]} />
-            <View style={[styles.consensusFill, { width: '20%', backgroundColor: SPECTRUM.violet }]} />
-            <View style={[styles.consensusFill, { width: '10%', backgroundColor: 'rgba(255,255,255,0.1)' }]} />
+            <View style={[styles.consensusFill, { width: `${consensus?.yesPct ?? 0}%`, backgroundColor: SPECTRUM.mint }]} />
+            <View style={[styles.consensusFill, { width: `${consensus?.noPct ?? 0}%`, backgroundColor: SPECTRUM.violet }]} />
+            <View style={[styles.consensusFill, { width: `${consensus?.abstainPct ?? 100}%`, backgroundColor: 'rgba(255,255,255,0.1)' }]} />
           </View>
           <View style={styles.consensusLegend}>
             <View style={styles.legendItem}><View style={[styles.legendDot, { backgroundColor: SPECTRUM.mint }]} /><Text style={styles.legendText}>YES</Text></View>
@@ -141,7 +166,10 @@ export default function AgentsScreen() {
             {specializedUnits.map((unit, i) => {
               const Icon = ROLE_ICONS[unit.role] || Zap;
               return (
-                <PressableScale key={i} style={styles.agentCard}>
+                <PressableScale key={i} style={styles.agentCard} onPress={() => Alert.alert(
+                  unit.name.toUpperCase(),
+                  `Role: ${unit.role}\nStatus: ${unit.status}\nConfidence: ${unit.confidence}%\n\n${unit.lastAction}`,
+                )}>
                   <View style={styles.cardTop}>
                     <View style={styles.iconCircle}>
                       <Icon size={16} color={SPECTRUM.violet} />

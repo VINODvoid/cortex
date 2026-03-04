@@ -164,7 +164,7 @@ export default function ActivityScreen() {
           </View>
           <View style={styles.glassList}>
             {activity.filter(a => a.txSignature).slice(0, 3).map((item, i, arr) => (
-              <Pressable key={i} style={[styles.verificationItem, i === arr.length - 1 && { borderBottomWidth: 0 }]} onPress={() => Linking.openURL(`https://explorer.solana.com/tx/${item.txSignature}?cluster=testnet`)}>
+              <Pressable key={i} style={[styles.verificationItem, i === arr.length - 1 && { borderBottomWidth: 0 }]} onPress={() => Linking.openURL(`https://explorer.solana.com/tx/${item.txSignature}?cluster=testnet`).catch(() => {})}>
                 <View>
                   <Text style={styles.verifTitle}>{item.action.toUpperCase()}</Text>
                   <Text style={styles.verifSig}>{item.txSignature?.slice(0, 16)}...</Text>

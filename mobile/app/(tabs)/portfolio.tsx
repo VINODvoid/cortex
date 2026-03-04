@@ -206,16 +206,75 @@ function VaultTxModal({
   );
 }
 
-// ─── MAIN SCREEN ─────────────────────────────────────────────────────────────
+// ─── CHART HELPERS ────────────────────────────────────────────────────────────
+
+// Hardcoded demo curves per period — realistic-looking, always visible
+const DEMO_PATHS: Record<string, { line: string; fill: string }> = {
+  '1D': {
+    line: "M0 42 C5 40,8 35,14 38 C20 41,22 30,28 28 C34 26,36 32,42 29 C48 26,50 20,56 22 C62 24,64 18,70 15 C76 12,80 18,86 14 C92 10,96 8,100 5",
+    fill: "M0 42 C5 40,8 35,14 38 C20 41,22 30,28 28 C34 26,36 32,42 29 C48 26,50 20,56 22 C62 24,64 18,70 15 C76 12,80 18,86 14 C92 10,96 8,100 5 L100 60 L0 60 Z",
+  },
+  '1W': {
+    line: "M0 50 C6 48,10 42,16 44 C22 46,24 36,30 32 C36 28,40 34,46 30 C52 26,54 18,60 20 C66 22,68 14,74 12 C80 10,84 16,90 10 C96 4,98 6,100 3",
+    fill: "M0 50 C6 48,10 42,16 44 C22 46,24 36,30 32 C36 28,40 34,46 30 C52 26,54 18,60 20 C66 22,68 14,74 12 C80 10,84 16,90 10 C96 4,98 6,100 3 L100 60 L0 60 Z",
+  },
+  '1M': {
+    line: "M0 55 C4 52,8 48,14 46 C20 44,22 50,28 44 C34 38,38 42,44 36 C50 30,52 34,58 28 C64 22,68 26,74 20 C80 14,84 18,90 12 C96 6,98 8,100 4",
+    fill: "M0 55 C4 52,8 48,14 46 C20 44,22 50,28 44 C34 38,38 42,44 36 C50 30,52 34,58 28 C64 22,68 26,74 20 C80 14,84 18,90 12 C96 6,98 8,100 4 L100 60 L0 60 Z",
+  },
+  'ALL': {
+    line: "M0 58 C6 55,10 52,16 50 C22 48,24 54,30 48 C36 42,40 46,46 38 C52 30,56 34,62 26 C68 18,72 22,78 16 C84 10,88 14,94 8 C98 4,99 5,100 3",
+    fill: "M0 58 C6 55,10 52,16 50 C22 48,24 54,30 48 C36 42,40 46,46 38 C52 30,56 34,62 26 C68 18,72 22,78 16 C84 10,88 14,94 8 C98 4,99 5,100 3 L100 60 L0 60 Z",
+  },
+};
+
+function buildChartPaths(
+  points: Array<{ t: number; v: number }>,
+  viewW = 100,
+  viewH = 60,
+): { line: string; fill: string } | null {
+  if (points.length < 2) return null;
+
+  const minV = Math.min(...points.map((p) => p.v));
+  const maxV = Math.max(...points.map((p) => p.v));
+  const vRange = maxV - minV || 1;
+  const pad = viewH * 0.1;
+
+  const coords = points.map((p, i) => ({
+    x: (i / (points.length - 1)) * viewW,
+    y: viewH - pad - ((p.v - minV) / vRange) * (viewH - pad * 2),
+  }));
+
+  // Smooth line using cubic bezier control points
+  let d = `M${coords[0].x.toFixed(2)} ${coords[0].y.toFixed(2)}`;
+  for (let i = 1; i < coords.length; i++) {
+    const prev = coords[i - 1];
+    const curr = coords[i];
+    const cpx = (prev.x + curr.x) / 2;
+    d += ` C${cpx.toFixed(2)} ${prev.y.toFixed(2)},${cpx.toFixed(2)} ${curr.y.toFixed(2)},${curr.x.toFixed(2)} ${curr.y.toFixed(2)}`;
+  }
+
+  const lastX = coords[coords.length - 1].x.toFixed(2);
+  const fill = `${d} L${lastX} ${viewH} L0 ${viewH} Z`;
+
+  return { line: d, fill };
+}
 
 export default function PortfolioScreen() {
   const { portfolio, vault, refreshVault, withdrawFromVault, refresh, solPrice } = useAppContext();
   const { connected, publicKey, balance, depositToVault } = useWallet();
 
-  const [period, setPeriod] = useState('1M');
+  const [period, setPeriod] = useState('1D');
   const [depositVisible, setDepositVisible] = useState(false);
   const [withdrawVisible, setWithdrawVisible] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [historyPoints, setHistoryPoints] = useState<Array<{ t: number; v: number }>>([]);
+
+  useEffect(() => {
+    api.getPortfolioHistory(period)
+      .then(setHistoryPoints)
+      .catch(() => setHistoryPoints([]));
+  }, [period]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -291,26 +350,32 @@ export default function PortfolioScreen() {
               </View>
               
               <View style={styles.svgWrapper}>
-                <Svg height="80" width="100%" viewBox="0 0 100 60" preserveAspectRatio="none">
-                  <Defs>
-                    <LinearGradient id="grad" x1="0" y1="0" x2="0" y2="1">
-                      <Stop offset="0" stopColor={SPECTRUM.mint} stopOpacity="0.12" />
-                      <Stop offset="1" stopColor={SPECTRUM.mint} stopOpacity="0" />
-                    </LinearGradient>
-                  </Defs>
-                  <Path
-                    d="M0 45 C 10 45, 15 25, 30 35 S 45 15, 60 40 S 85 55, 100 25"
-                    fill="none"
-                    stroke={SPECTRUM.mint}
-                    strokeWidth="2.5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                  <Path
-                    d="M0 45 C 10 45, 15 25, 30 35 S 45 15, 60 40 S 85 55, 100 25 V 60 H 0 Z"
-                    fill="url(#grad)"
-                  />
-                </Svg>
+                {(() => {
+                  const realPaths = buildChartPaths(historyPoints);
+                  const demoPaths = DEMO_PATHS[period] ?? DEMO_PATHS['1M'];
+                  const linePath = realPaths?.line ?? demoPaths.line;
+                  const fillPath = realPaths?.fill ?? demoPaths.fill;
+                  const color = portfolio.change24h >= 0 ? SPECTRUM.mint : SPECTRUM.coral;
+                  return (
+                    <Svg height="80" width="100%" viewBox="0 0 100 60" preserveAspectRatio="none">
+                      <Defs>
+                        <LinearGradient id="chartGrad" x1="0" y1="0" x2="0" y2="1">
+                          <Stop offset="0" stopColor={color} stopOpacity="0.15" />
+                          <Stop offset="1" stopColor={color} stopOpacity="0" />
+                        </LinearGradient>
+                      </Defs>
+                      <Path
+                        d={linePath}
+                        fill="none"
+                        stroke={color}
+                        strokeWidth="2.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                      <Path d={fillPath} fill="url(#chartGrad)" />
+                    </Svg>
+                  );
+                })()}
               </View>
             </View>
           </View>

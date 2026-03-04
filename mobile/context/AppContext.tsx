@@ -175,6 +175,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setActivity(data.activity);
     });
 
+    ws.on("disconnected", () => {
+      setIsConnected(false);
+    });
+
     ws.on("agents_update", (data: AgentStatus[]) => {
       setAgents(data);
     });
@@ -242,7 +246,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const triggerCycle = useCallback(async () => {
     if (cycleRunning) return;
-    await api.triggerCycle();
+    setCycleRunning(true);
+    try {
+      await api.triggerCycle();
+    } catch {
+      setCycleRunning(false);
+    }
   }, [cycleRunning]);
 
   return (

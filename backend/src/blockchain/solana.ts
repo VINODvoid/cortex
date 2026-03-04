@@ -86,8 +86,9 @@ export class SolanaService {
         this.wallet.publicKey,
         { mint },
       );
-      if (accounts.value.length === 0) return 0;
-      const balance = await this.connection.getTokenAccountBalance(accounts.value[0].pubkey);
+      const first = accounts.value[0];
+      if (!first) return 0;
+      const balance = await this.connection.getTokenAccountBalance(first.pubkey);
       return balance.value.uiAmount ?? 0;
     } catch {
       return 0;

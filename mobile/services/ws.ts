@@ -9,7 +9,10 @@ export class WsManager {
   constructor(private url: string) {}
 
   connect(): void {
-    if (this.ws?.readyState === WebSocket.OPEN) return;
+    if (
+      this.ws?.readyState === WebSocket.OPEN ||
+      this.ws?.readyState === WebSocket.CONNECTING
+    ) return;
 
     this.ws = new WebSocket(this.url);
 
@@ -30,6 +33,9 @@ export class WsManager {
     };
 
     this.ws.onclose = () => {
+      for (const handler of this.listeners.get("disconnected") ?? []) {
+        handler({});
+      }
       if (this.active) {
         this.reconnectTimer = setTimeout(() => this.connect(), 3000);
       }

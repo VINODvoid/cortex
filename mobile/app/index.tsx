@@ -91,37 +91,57 @@ const NeuralVisual = ({ accent }: { accent: string }) => {
   );
 };
 
+type SwarmAgent = typeof SWARM_AGENTS[0];
+
+const AgentOrbit = ({ agent, accent }: { agent: SwarmAgent; accent: string }) => {
+  const rot = useSharedValue(0);
+  useEffect(() => {
+    rot.value = withRepeat(withTiming(1, { duration: agent.speed, easing: Easing.linear }), -1, false);
+  }, []);
+  const orbitStyle = useAnimatedStyle(() => ({ transform: [{ rotate: `${agent.startAngle + rot.value * 360}deg` }] }));
+  const iconStyle = useAnimatedStyle(() => ({ transform: [{ rotate: `${-agent.startAngle - rot.value * 360}deg` }] }));
+  return (
+    <Animated.View style={[styles.agentOrbit, { width: agent.orbit * 2, height: agent.orbit * 2, left: VC - agent.orbit, top: VC - agent.orbit }, orbitStyle]}>
+      <Animated.View style={[styles.agentBox, { top: -13, left: agent.orbit - 13, borderColor: accent }, iconStyle]}>
+        <agent.Icon size={12} color="#FFF" strokeWidth={1.5} />
+      </Animated.View>
+    </Animated.View>
+  );
+};
+
 const SwarmVisual = ({ accent }: { accent: string }) => (
   <View style={styles.visualContainer}>
-    {[60, 100].map((r) => (<View key={r} style={[styles.orbitRing, { width: r * 2, height: r * 2, borderRadius: r, left: VC - r, top: VC - r }]} />))}
-    {SWARM_AGENTS.map((agent, i) => {
-      const rot = useSharedValue(0);
-      useEffect(() => { rot.value = withRepeat(withTiming(1, { duration: agent.speed, easing: Easing.linear }), -1, false); }, []);
-      const orbitStyle = useAnimatedStyle(() => ({ transform: [{ rotate: `${agent.startAngle + rot.value * 360}deg` }] }));
-      const iconStyle = useAnimatedStyle(() => ({ transform: [{ rotate: `${-agent.startAngle - rot.value * 360}deg` }] }));
-      return (
-        <Animated.View key={i} style={[styles.agentOrbit, { width: agent.orbit * 2, height: agent.orbit * 2, left: VC - agent.orbit, top: VC - agent.orbit }, orbitStyle]}>
-          <Animated.View style={[styles.agentBox, { top: -13, left: agent.orbit - 13, borderColor: accent }, iconStyle]}><agent.Icon size={12} color="#FFF" strokeWidth={1.5} /></Animated.View>
-        </Animated.View>
-      );
-    })}
+    {[60, 100].map((r) => (
+      <View key={r} style={[styles.orbitRing, { width: r * 2, height: r * 2, borderRadius: r, left: VC - r, top: VC - r }]} />
+    ))}
+    {SWARM_AGENTS.map((agent, i) => (
+      <AgentOrbit key={i} agent={agent} accent={accent} />
+    ))}
     <View style={styles.coreSolidSmall} />
   </View>
 );
 
-const VelocityVisual = ({ accent }: { accent: string }) => {
-  const BARS = [0.3, 0.8, 0.5, 1.0, 0.4, 0.7, 0.55];
-  return (
-    <View style={styles.visualContainer}>
-      <View style={styles.velocityRow}>{BARS.map((h, i) => {
-        const anim = useSharedValue(0);
-        useEffect(() => { anim.value = withRepeat(withTiming(1, { duration: 500 + i * 100 }), -1, true); }, []);
-        const barStyle = useAnimatedStyle(() => ({ transform: [{ scaleY: interpolate(anim.value, [0, 1], [0.4, 1.7]) }], backgroundColor: accent }));
-        return <Animated.View key={i} style={[styles.velocityBar, { height: 48 * h }, barStyle]} />;
-      })}</View>
-    </View>
-  );
+const BAR_HEIGHTS = [0.3, 0.8, 0.5, 1.0, 0.4, 0.7, 0.55];
+
+const VelocityBar = ({ h, i, accent }: { h: number; i: number; accent: string }) => {
+  const anim = useSharedValue(0);
+  useEffect(() => {
+    anim.value = withRepeat(withTiming(1, { duration: 500 + i * 100 }), -1, true);
+  }, []);
+  const barStyle = useAnimatedStyle(() => ({
+    transform: [{ scaleY: interpolate(anim.value, [0, 1], [0.4, 1.7]) }],
+    backgroundColor: accent,
+  }));
+  return <Animated.View style={[styles.velocityBar, { height: 48 * h }, barStyle]} />;
 };
+
+const VelocityVisual = ({ accent }: { accent: string }) => (
+  <View style={styles.visualContainer}>
+    <View style={styles.velocityRow}>
+      {BAR_HEIGHTS.map((h, i) => <VelocityBar key={i} h={h} i={i} accent={accent} />)}
+    </View>
+  </View>
+);
 
 const DeployVisual = ({ accent, connected }: { accent: string, connected: boolean }) => {
   const rotation = useSharedValue(0);
@@ -174,9 +194,10 @@ export default function Onboarding() {
   useEffect(() => {
     if (activeIndex === 3 && connected && !isRestoring) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      setTimeout(() => router.replace("/(tabs)/home"), 1200);
+      const t = setTimeout(() => router.replace("/(tabs)/home"), 1200);
+      return () => clearTimeout(t);
     }
-  }, [connected, activeIndex, isRestoring]);
+  }, [connected, activeIndex, isRestoring, router]);
 
   const isLast = activeIndex === 3;
   const btnAccent = isLast && connected ? SPECTRUM.mint : SLIDES[activeIndex].accent;

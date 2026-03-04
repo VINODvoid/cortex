@@ -56,11 +56,11 @@ interface WalletContextValue {
 
 const APP_IDENTITY = {
   name: "CORTEX",
-  uri: "https://cortex.app",
-  icon: "favicon.ico",
+  uri: "https://raw.githubusercontent.com/VINODvoid/cortex/main/",
+  icon: "mobile/assets/icon.png",
 };
 
-const CONNECTION = new Connection(clusterApiUrl("testnet"), "confirmed");
+const CONNECTION = new Connection(clusterApiUrl("devnet"), "confirmed");
 
 // ─── Context ─────────────────────────────────────────────────────────────────
 
@@ -81,7 +81,7 @@ const WalletContext = createContext<WalletContextValue>({
 
 function decodeAddress(addr: string | Uint8Array): PublicKey {
   if (typeof addr === "string") {
-    return new PublicKey(Buffer.from(addr, "base64"));
+    return new PublicKey(Buffer.from(addr, "base64")); // MWA returns base64-encoded address
   }
   return new PublicKey(Buffer.from(addr));
 }
@@ -185,7 +185,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     try {
       await _transact(async (wallet: Web3MobileWallet) => {
         const { accounts, auth_token, wallet_uri_base } = await wallet.authorize({
-          cluster: "testnet",
+          cluster: "devnet",
           identity: APP_IDENTITY,
           ...(authToken ? { auth_token: authToken } : {}),
         });
@@ -266,7 +266,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
 
       await _transact(async (wallet: Web3MobileWallet) => {
         const { accounts, auth_token } = await wallet.authorize({
-          cluster: "testnet",
+          cluster: "devnet",
           identity: APP_IDENTITY,
           ...(authToken ? { auth_token: authToken } : {}),
         });
@@ -290,7 +290,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
 
         // Sign only — backend handles submission so mobile never hits Solana RPC.
         const [signedTx] = await wallet.signTransactions({ transactions: [tx] });
-        signedTxBytes = signedTx.serialize();
+        signedTxBytes = new Uint8Array(signedTx.serialize());
       });
 
       // Persist refreshed auth token AFTER Phantom session is closed.

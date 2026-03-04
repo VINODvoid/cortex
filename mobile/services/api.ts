@@ -41,4 +41,6 @@ export const api = {
     }).then((r) => r.json()) as Promise<{ signature?: string; explorer?: string; error?: string }>,
   getVaultPositions: () =>
     get<{ sol: number; usdc: number }>("/api/vault/positions"),
+  getPortfolioHistory: (period: string) =>
+    get<Array<{ t: number; v: number }>>(`/api/portfolio/history?period=${period}`),
 };

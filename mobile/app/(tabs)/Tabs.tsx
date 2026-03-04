@@ -120,7 +120,7 @@ function CustomTabBar({ state, navigation }: any) {
 
 export default function TabLayout() {
   return (
-    <Tabs tabBar={(props) => <CustomTabBar {...props} />} screenOptions={{ headerShown: false }}>
+    <Tabs tabBar={(props) => <CustomTabBar {...props} />} screenOptions={{ headerShown: false, animation: 'none' }}>
       <Tabs.Screen name="home" />
       <Tabs.Screen name="agents" />
       <Tabs.Screen name="portfolio" />

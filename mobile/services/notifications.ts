@@ -15,7 +15,8 @@ if (isNotificationSupported) {
     if (Notifications && Notifications.setNotificationHandler) {
       Notifications.setNotificationHandler({
         handleNotification: async () => ({
-          shouldShowAlert: true,
+          shouldShowBanner: true,
+          shouldShowList: true,
           shouldPlaySound: true,
           shouldSetBadge: false,
         }),
@@ -68,15 +69,16 @@ export async function notifyTradeExecuted(
 ): Promise<void> {
   if (!Notifications) return;
 
+  const agentName = agent.charAt(0).toUpperCase() + agent.slice(1);
   try {
     await Notifications.scheduleNotificationAsync({
       content: {
-        title: "CORTEX — Trade Executed",
-        body: `${agent}: ${message}`,
+        title: "Swarm Executed",
+        body: `${agentName} · ${message}`,
         data: { txSignature: txSignature ?? null },
         ...(Platform.OS === "android" ? { channelId: "trades" } : {}),
       },
-      trigger: null, // fire immediately
+      trigger: null,
     });
   } catch (e) {
     // Silent fail
@@ -92,11 +94,12 @@ export async function notifyTradeFailed(
 ): Promise<void> {
   if (!Notifications) return;
 
+  const agentName = agent.charAt(0).toUpperCase() + agent.slice(1);
   try {
     await Notifications.scheduleNotificationAsync({
       content: {
-        title: "CORTEX — Execution Failed",
-        body: `${agent}: ${message}`,
+        title: "Proposal Rejected",
+        body: `${agentName} · ${message}`,
         ...(Platform.OS === "android" ? { channelId: "trades" } : {}),
       },
       trigger: null,

@@ -14,7 +14,7 @@ import { AirdropNeuron } from "../agents/airdrop";
 import type { Agent } from "../agents/base";
 import { JupiterService, TOKEN_MINTS } from "../blockchain/jupiter";
 import { TransactionExecutor } from "../blockchain/executor";
-import { createInitialState, addActivity, broadcast } from "./state";
+import { createInitialState, addActivity, broadcast, pushPortfolioPoint, getPortfolioHistory } from "./state";
 import type { AppState } from "./state";
 import type { ActivityItem } from "./types";
 
@@ -30,11 +30,14 @@ function jsonResponse(data: unknown, status = 200): Response {
 }
 
 export function createServer(port = 3001) {
-  const solanaService = new SolanaService("testnet");
+  const solanaService = new SolanaService("devnet");
   const poolDataService = new PoolDataService(solanaService.getConnection());
   const jupiterService = new JupiterService(solanaService.getConnection());
   const executor = new TransactionExecutor(solanaService, jupiterService, poolDataService);
   const groqKey = process.env.GROQ_API_KEY ?? "";
+  if (!groqKey) {
+    console.error("FATAL: GROQ_API_KEY is not set. Agents will fail to think.");
+  }
 
   const agents: Agent[] = [
     new StrategistNeuron(groqKey),
@@ -65,6 +68,7 @@ export function createServer(port = 3001) {
       const change24h =
         prevTotal > 0 ? ((totalUsd - prevTotal) / prevTotal) * 100 : 0;
       state.portfolio = { ...state.portfolio, sol, usdc, totalUsd, change24h };
+      pushPortfolioPoint(state, totalUsd);
       broadcast(state, { event: "portfolio_update", data: state.portfolio });
     } catch {
       // devnet balance fetch failures are non-fatal
@@ -72,8 +76,6 @@ export function createServer(port = 3001) {
   }
 
   async function runCycle(): Promise<void> {
-    if (state.cycleRunning) return;
-
     state.cycleRunning = true;
     broadcast(state, { event: "cycle_start", data: {} });
 
@@ -90,8 +92,13 @@ export function createServer(port = 3001) {
     };
 
     // Collect proposals (concurrent, individual failures skipped)
+    const cycleTs = Date.now();
+
     const proposalResults = await Promise.allSettled(
       agents.map(async (agent, i) => {
+        // Stagger agent starts by 2s each for a deliberate demo effect
+        await new Promise((r) => setTimeout(r, i * 2000));
+
         // 30s timeout for agent thinking
         const timeout = new Promise<never>((_, reject) =>
           setTimeout(() => reject(new Error("Think timeout")), 30000)
@@ -99,7 +106,7 @@ export function createServer(port = 3001) {
 
         const proposal = await Promise.race([agent.think(context), timeout]);
 
-        const proposalId = `${Date.now()}-p${i}`;
+        const proposalId = `${cycleTs}-p${i}`;
         const item: ActivityItem = {
           id: proposalId,
           type: "PROPOSAL",
@@ -169,7 +176,7 @@ export function createServer(port = 3001) {
       );
 
       const voteItem: ActivityItem = {
-        id: `${Date.now()}-v${agentIdx}`,
+        id: `${cycleTs}-v${agentIdx}`,
         type: "VOTE",
         agent: state.agents[agentIdx]?.name ?? proposal.agent,
         action: `Vote ${passed ? "PASSED" : "REJECTED"} — ${yes}Y / ${no}N / ${abstain}A`,
@@ -198,9 +205,10 @@ export function createServer(port = 3001) {
     // Execute only the consensus winner — one Jupiter call per cycle, no rate limit hammering
     if (winner) {
       const { proposal, agentIdx } = winner;
-      executor.executeProposal(proposal).then((execResult) => {
+      try {
+        const execResult = await executor.executeProposal(proposal);
         const execItem: ActivityItem = {
-          id: `${Date.now()}-e${agentIdx}`,
+          id: `${cycleTs}-e${agentIdx}`,
           type: "EXECUTION",
           agent: proposal.agent,
           action: execResult.message,
@@ -213,8 +221,10 @@ export function createServer(port = 3001) {
         };
         addActivity(state, execItem);
         broadcast(state, { event: "execution_complete", data: execItem });
-        refreshPortfolio();
-      }).catch(() => {});
+      } catch (err) {
+        console.error("Executor error:", err instanceof Error ? err.message : err);
+      }
+      await refreshPortfolio();
     }
 
     state.cycleRunning = false;
@@ -254,6 +264,11 @@ export function createServer(port = 3001) {
         return jsonResponse(state.portfolio);
       }
 
+      if (url.pathname === "/api/portfolio/history" && req.method === "GET") {
+        const period = url.searchParams.get("period") ?? "1M";
+        return jsonResponse(getPortfolioHistory(state, period));
+      }
+
       if (url.pathname === "/api/pools" && req.method === "GET") {
         const pools = await poolDataService.getAllPools();
         return jsonResponse(pools);
@@ -265,6 +280,18 @@ export function createServer(port = 3001) {
 
       if (url.pathname === "/api/activity" && req.method === "GET") {
         return jsonResponse(state.activity);
+      }
+
+      if (url.pathname === "/api/airdrop" && req.method === "POST") {
+        if (solanaService.isMainnet()) {
+          return jsonResponse({ error: "Airdrop not available on mainnet" }, 403);
+        }
+        try {
+          const signature = await solanaService.requestAirdrop();
+          return jsonResponse({ signature, message: "2 SOL airdropped to vault" });
+        } catch (err: any) {
+          return jsonResponse({ error: err?.message ?? "Airdrop failed" }, 500);
+        }
       }
 
       if (url.pathname === "/api/blockhash" && req.method === "GET") {
@@ -375,6 +402,12 @@ export function createServer(port = 3001) {
         if (direction === "SOL_TO_USDC" && amount > vaultBal) {
           return jsonResponse({ error: `Insufficient vault balance (${vaultBal.toFixed(4)} SOL)` }, 400);
         }
+        if (direction === "USDC_TO_SOL") {
+          const usdcBal = await solanaService.getTokenBalance(TOKEN_MINTS.USDC);
+          if (amount > usdcBal) {
+            return jsonResponse({ error: `Insufficient USDC balance (${usdcBal.toFixed(2)} USDC)` }, 400);
+          }
+        }
         const inputMint = direction === "SOL_TO_USDC" ? TOKEN_MINTS.SOL : TOKEN_MINTS.USDC;
         const outputMint = direction === "SOL_TO_USDC" ? TOKEN_MINTS.USDC : TOKEN_MINTS.SOL;
         const amountInBaseUnits = direction === "SOL_TO_USDC"
@@ -399,8 +432,16 @@ export function createServer(port = 3001) {
         if (state.cycleRunning) {
           return jsonResponse({ error: "Cycle already running" }, 409);
         }
-        runCycle(); // fire-and-forget
+        state.cycleRunning = true; // set synchronously to prevent TOCTOU race
+        runCycle().catch((err) => {
+          console.error("Cycle error:", err);
+          state.cycleRunning = false;
+        });
         return jsonResponse({ started: true });
+      }
+
+      if (url.pathname === "/icon.png" && req.method === "GET") {
+        return new Response(Bun.file("icon.png"), { headers: { "Content-Type": "image/png", ...CORS_HEADERS } });
       }
 
       return new Response("Not found", { status: 404, headers: CORS_HEADERS });
@@ -423,7 +464,13 @@ export function createServer(port = 3001) {
         try {
           const data = JSON.parse(String(msg));
           if (data.type === "trigger_cycle") {
-            runCycle();
+            if (!state.cycleRunning) {
+              state.cycleRunning = true;
+              runCycle().catch((err) => {
+                console.error("Cycle error:", err);
+                state.cycleRunning = false;
+              });
+            }
           }
         } catch {}
       },
