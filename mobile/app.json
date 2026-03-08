@@ -15,7 +15,7 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.anonymous.mobile"
+      "bundleIdentifier": "com.cortex.app"
     },
     "android": {
       "adaptiveIcon": {
@@ -25,7 +25,7 @@
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "com.anonymous.mobile"
+      "package": "com.cortex.app"
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -40,6 +40,12 @@
           "defaultChannel": "trades"
         }
       ]
-    ]
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "484a7e73-9b6a-43d0-b65f-0cf0a178076b"
+      }
+    }
   }
 }

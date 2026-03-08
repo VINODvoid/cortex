@@ -27,6 +27,16 @@
 
 ---
 
+## Links
+
+| | |
+|---|---|
+| **Demo Video** | [Watch on Google Drive](https://drive.google.com/file/d/1Qq46P94UbAgOyF60eRXSsTn2MtZC6AHG/view?usp=sharing) |
+| **APK Download** | [Download on Expo](https://expo.dev/accounts/kalki-kal/projects/cortex/builds/14ca8d01-3b30-4136-8785-f189859ea33b) |
+| **Live Backend** | [cortex-production-e9c5.up.railway.app](https://cortex-production-e9c5.up.railway.app/health) |
+
+---
+
 ## What is CORTEX?
 
 CORTEX deploys a swarm of **10 specialized AI agents** that autonomously coordinate to optimize a DeFi portfolio on Solana. Each agent has a distinct strategic role — from yield hunting to risk management — and all decisions emerge from a **democratic voting consensus** rather than a single controller. No single agent can unilaterally execute a trade.
@@ -167,7 +177,7 @@ cortex/
 ### 1. Clone
 
 ```bash
-git clone https://github.com/your-org/cortex.git
+git clone https://github.com/VINODvoid/cortex.git
 cd cortex
 ```
 
